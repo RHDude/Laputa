@@ -1,0 +1,51 @@
+#!/usr/bin/env python3
+# Подставной systemctl для стенда: состояние юнитов лежит в файле $FAKE_UNITS.
+import json, os, sys, time
+path = os.environ.get('FAKE_UNITS', '/nonexistent')
+try:
+    units = json.load(open(path))
+except Exception:
+    units = {}
+timers = units.pop('__timers', [])
+a = sys.argv[1:]
+def save():
+    u = dict(units)
+    if timers:
+        u['__timers'] = timers
+    json.dump(u, open(path, 'w'))
+if not a: sys.exit(0)
+if a[0] == 'show':
+    names = a[a.index('--') + 1:] if '--' in a else [x for x in a[1:] if not x.startswith('-')]
+    out = []
+    for n in names:
+        u = units.get(n)
+        if not u:
+            out.append('Id=%s\nLoadState=not-found\nActiveState=inactive\nSubState=dead\nStateChangeTimestampMonotonic=0\nMemoryCurrent=[not set]\nNRestarts=0\nFragmentPath=\nUnitFileState=' % n)
+        else:
+            mono = int((time.monotonic() - (time.time() - u.get('since', time.time()))) * 1e6)
+            out.append('Id=%s\nLoadState=loaded\nActiveState=%s\nSubState=%s\nStateChangeTimestampMonotonic=%d\nMemoryCurrent=%s\nNRestarts=%d\nFragmentPath=%s\nUnitFileState=%s'
+                       % (n, u['state'], {'active': 'running', 'failed': 'failed'}.get(u['state'], 'dead'), max(1, mono), u.get('mem', '[not set]'),
+                          u.get('restarts', 0), u.get('path', '/lib/systemd/system/' + n), u.get('enabled', 'enabled')))
+    print('\n\n'.join(out))
+elif a[0] == 'list-units':
+    for n, u in sorted(units.items()):
+        print('%s loaded %s %s %s' % (n, u['state'], 'running' if u['state'] == 'active' else 'dead', u.get('desc', '')))
+    print('systemd-journald.service loaded active running Journal Service')
+elif a[0] == 'list-unit-files':
+    print('never-started.service disabled enabled')
+    print('getty@.service enabled enabled')
+elif a[0] == 'list-timers':
+    for t in timers:
+        print('Thu 2026-10-08 13:00:00 UTC 30min left Thu 2026-10-08 12:00:00 UTC 30min ago %s %s' % (t, t.replace('.timer', '.service')))
+elif a[0] in ('restart', 'start', 'stop'):
+    n = a[-1]
+    if n.startswith('laputa-'): sys.exit(0)
+    if n not in units: print('Unit %s not found.' % n); sys.exit(5)
+    if units[n].get('broken') and a[0] != 'stop':
+        units[n]['state'] = 'failed'; units[n]['since'] = time.time(); save()
+        print('Job for %s failed because the control process exited with error code.' % n); sys.exit(1)
+    units[n]['state'] = 'inactive' if a[0] == 'stop' else 'active'
+    units[n]['since'] = time.time(); save()
+elif a[0] == 'reboot':
+    open(path + '.reboot', 'w').write('1')
+sys.exit(0)

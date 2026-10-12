@@ -1,0 +1,6 @@
+#!/bin/sh
+for t; do :; done
+echo "traceroute to $t ($t), 20 hops max, 60 byte packets"
+echo " 1  10.0.0.1  0.412 ms"
+echo " 2  198.51.100.1  5.120 ms"
+echo " 3  *"

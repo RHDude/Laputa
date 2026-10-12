@@ -1,0 +1,3 @@
+#!/bin/sh
+[ -n "$FAKE_APT" ] && [ -f "$FAKE_APT" ] && cat "$FAKE_APT"
+exit 0

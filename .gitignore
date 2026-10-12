@@ -1,0 +1,18 @@
+# Ключ подписи и пароль к нему — только у владельца, никогда в репозиторий
+keystore/
+*.jks
+*.keystore
+pass.txt
+# Сборка
+dist/
+android/out/
+ui/dist/
+ui/dist-dev/
+ui/node_modules/
+__pycache__/
+*.pyc
+# Старые версии, скриншоты с реальными данными, рабочие файлы
+server/laputa-1.0.0.py
+*.log
+.env
+test/shots/

@@ -1,0 +1,31 @@
+#!/usr/bin/env python3
+# Подставной docker: контейнеры лежат в $FAKE_DOCKER.
+import json, os, sys, time
+path = os.environ.get('FAKE_DOCKER', '/nonexistent')
+try:
+    c = json.load(open(path))
+except Exception:
+    c = {}
+a = sys.argv[1:]
+iso = lambda t: time.strftime('%Y-%m-%dT%H:%M:%S', time.gmtime(t)) + '.123456789Z' if t else '0001-01-01T00:00:00Z'
+if not a: sys.exit(0)
+if a[0] == 'ps':
+    for name, d in c.items():
+        print(json.dumps({'Names': name, 'Image': d.get('image', 'img:latest'), 'State': d['status'], 'Ports': d.get('ports', ''), 'ID': 'id' + name}))
+elif a[0] == 'inspect':
+    fi = a.index('--format')
+    for n in [x for i, x in enumerate(a[1:], 1) if i not in (fi, fi + 1)]:
+        d = c.get(n)
+        if d:
+            print('/%s|%s|%s|%s|%d|%d' % (n, d['status'], iso(d.get('started')), iso(d.get('finished')), d.get('code', 0), d.get('restarts', 0)))
+elif a[0] in ('restart', 'start', 'stop'):
+    n = a[1]
+    if n not in c:
+        print('Error response from daemon: No such container: %s' % n); sys.exit(1)
+    if a[0] == 'stop':
+        c[n].update(status='exited', code=0, finished=time.time())
+    else:
+        c[n].update(status='running', started=time.time(), code=0)
+    json.dump(c, open(path, 'w')); print(n)
+elif a[0] == 'logs':
+    print('2026-10-08T12:00:00Z контейнер %s пишет журнал' % a[-1])

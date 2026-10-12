@@ -1,0 +1,25 @@
+#!/usr/bin/env python3
+# Подставной journalctl: журнал службы, прошлая загрузка ($FAKE_PREV_BOOT), входы по SSH ($FAKE_SSH).
+import os, sys
+a = sys.argv[1:]
+if '-b' in a and a[a.index('-b') + 1] == '-1':
+    p = os.environ.get('FAKE_PREV_BOOT', '')
+    if not p or not os.path.exists(p):
+        print('Specified boot ID not found.', file=sys.stderr); sys.exit(1)
+    sys.stdout.write(open(p).read()); sys.exit(0)
+if '-t' in a:
+    since = 0.0
+    if '--since' in a:
+        since = float(a[a.index('--since') + 1].lstrip('@'))
+    p = os.environ.get('FAKE_SSH', '')
+    if p and os.path.exists(p):
+        for line in open(p):
+            try:
+                if float(line.split()[0]) > since:
+                    sys.stdout.write(line)
+            except (ValueError, IndexError):
+                pass
+    sys.exit(0)
+unit = a[a.index('-u') + 1] if '-u' in a else '?'
+print('окт 08 01:41:07 bench demo[1]: строка журнала для %s' % unit)
+print('окт 08 01:41:08 bench demo[1]: вторая строка')
