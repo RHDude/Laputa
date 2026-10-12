@@ -6,7 +6,7 @@ import { pct, round, unitName, guessKind, KINDS, kindName } from './fmt.js';
 import { isMuted, badServices, Meter, rebootAt } from './home.js';
 import { NotifyRows, Group } from './tabs.js';
 
-// ---------- графики ----------
+// ---------- charts ----------
 
 export function Spark({ data, kind, h = 44 }) {
   if (!data || data.length < 2) return html`<div class="spark spark-empty" style=${'height:' + h + 'px'} />`;
@@ -31,7 +31,7 @@ export function Spark({ data, kind, h = 44 }) {
   </svg>`;
 }
 
-// ---------- службы ----------
+// ---------- services ----------
 
 export function svcText(s, node, now) {
   if (node && (node.boot_missing || []).includes(s.unit) && s.state !== 'active') return t('svc.boot_missing');
@@ -67,8 +67,8 @@ export function ServiceRow({ s, node, now, showNode, onClick }) {
   </button>`;
 }
 
-// Службы, свёрнутые по типам. До 6 штук — простым списком: группы из одной строки только мешают.
-// Группа с бедой открыта всегда; что открыто, телефон запоминает.
+// Services folded by kind. Up to 6: a plain list, one-row groups only get in the way.
+// A group in trouble is always open; the phone remembers what is open.
 export function SvcFolds({ ctx, scope, items, showNode, flatUpTo = 6 }) {
   const { cfg, saveCfg, setSheet, now } = ctx;
   const row = ({ n, s }) => html`<${ServiceRow} key=${n.id + s.unit} s=${n.status === 'down' ? { ...s, state: 'unknown' } : s} node=${n} now=${now} showNode=${showNode}
@@ -78,7 +78,7 @@ export function SvcFolds({ ctx, scope, items, showNode, flatUpTo = 6 }) {
   const groups = KINDS.map((k) => [k, items.filter(({ s }) => (KINDS.includes(s.kind) ? s.kind : 'other') === k)]).filter((g) => g[1].length);
   return html`<div class="folds">${groups.map(([k, list]) => {
     const bad = list.filter(({ n, s }) => n.status !== 'down' && svcSev(s, n) === 'crit').length;
-    const unknown = list.filter(({ n }) => n.status === 'down').length;   // узел молчит: что со службами, не знаем
+    const unknown = list.filter(({ n }) => n.status === 'down').length;   // node is silent: service states unknown
     const off = list.filter(({ n, s }) => n.status !== 'down' && svcSev(s, n) === 'off').length;
     const summary = bad ? t('fold.bad', { n: bad }) : unknown === list.length ? t('svc.unknown')
       : [off && t('fold.off', { n: off }), unknown && t('fold.unknown', { n: unknown })].filter(Boolean).join(', ') || t('fold.ok');
@@ -127,7 +127,7 @@ function Candidates({ ctx, node }) {
   </div>`;
 }
 
-// ---------- действия узла ----------
+// ---------- node actions ----------
 
 export function runAction(ctx, node, a) {
   const { setSheet, say } = ctx;
@@ -158,7 +158,7 @@ function Actions({ ctx, node }) {
   </section>`;
 }
 
-// ---------- игровая консоль ----------
+// ---------- game console ----------
 
 function Game({ ctx, node }) {
   const { cmd, say, setSheet } = ctx;
@@ -216,7 +216,7 @@ function Game({ ctx, node }) {
   </section>`;
 }
 
-// ---------- бэкапы ----------
+// ---------- backups ----------
 
 function Backups({ ctx, node }) {
   const { now, setSheet } = ctx;
@@ -240,7 +240,7 @@ function Backups({ ctx, node }) {
   </section>`;
 }
 
-// ---------- обслуживание ----------
+// ---------- maintenance ----------
 
 function Maint({ ctx, node, reboot }) {
   const mt = node.maint;
@@ -253,7 +253,7 @@ function Maint({ ctx, node, reboot }) {
   </section>`;
 }
 
-// ---------- разбор падения ----------
+// ---------- crash analysis ----------
 
 function Postmortem({ ctx, node }) {
   const { now, get, cfg, saveCfg } = ctx;
@@ -287,7 +287,7 @@ function Postmortem({ ctx, node }) {
   </section>`;
 }
 
-// ---------- проверка молчащего узла с соседей ----------
+// ---------- checking a silent node from neighbours ----------
 
 export function diagVerdict(d) {
   const rs = (d && d.results ? d.results : []).filter((r) => r.ok);
@@ -363,7 +363,7 @@ function Diag({ ctx, node }) {
   </section>`;
 }
 
-// ---------- экран узла ----------
+// ---------- node screen ----------
 
 export function NodeScreen({ ctx, node, id }) {
   const { now, setRoute, setSheet, get, post, cmd, say, snap } = ctx;
@@ -495,7 +495,7 @@ function NodeNotify({ ctx, node }) {
   </${Group}>`;
 }
 
-// ---------- кого заденет ----------
+// ---------- who is affected ----------
 
 export function impactText(imp) {
   if (!imp) return '';

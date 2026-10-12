@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Проверка Java-логики тревог (та же, что в APK) на JVM против живого стенда."""
+"""The Java alert logic (same as in the APK) on a JVM against the live bench."""
 import json, os, subprocess, sys, threading, time
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, 'bench'))
 import run as B  # noqa: E402
 
 JVM = os.path.join(B.BASE + '-jvm')
-CP = JVM + ':/usr/share/java/com.android.json.jar'   # org.json: на телефоне он в системе, на JVM берём пакет libandroid-json-java
+CP = JVM + ':/usr/share/java/com.android.json.jar'  # org.json: part of Android on the phone, the libandroid-json-java package on the JVM
 
 
 def compile_java():
@@ -89,7 +89,7 @@ def main():
     B.set_unit('aurora', 'milo-bot.service', state='active')
     r = java(wait=15)
     B.check('и об отбое тоже', not [a for a in r['alerts'] if 'Milo Bot' in a[3]], r['alerts'])
-    # сторож не повторяет тревогу по той же службе 5 минут, поэтому дальше другие службы
+    # the watchman won't repeat an alert for the same service within 5 minutes, so use other services
     B.cmd(A, 'aurora', 'svc.add', unit='mike-bot.service', label='Mike', kind='bot')
     B.cmd(A, 'aurora', 'svc.add', unit='x-ui.service', label='Panel', kind='panel')
     time.sleep(3)
@@ -134,17 +134,17 @@ def main():
     print('\n4. Сторож умер: переход на второго')
     B.stop('agent-ridge')
     B.wait_for(lambda: B.node(Bh, 'ridge')['status'] == 'down' and B.node(A, 'ridge')['status'] == 'down', 30)
-    r = java(wait=0)  # приложение узнало про Ridge от первого сторожа
+    r = java(wait=0)  # the app learned about Ridge from the first watchman
     B.check('первый сторож сообщил о Ridge сразу как о молчащем, без ложного «обрыва»', [a for a in r['alerts'] if a[3] == 'Ridge молчит'] and not [a for a in r['alerts'] if 'потерял' in a[3]], r['alerts'])
-    B.set_unit('aurora', 'milo-bot.service', state='failed')   # беда случится, пока приложение не на связи
-    B.stop('hub-summit')                                         # упал только сам сторож, узел жив
+    B.set_unit('aurora', 'milo-bot.service', state='failed')  # trouble happens while the app is offline
+    B.stop('hub-summit')  # only the watchman died, the node is alive
     B.wait_for(lambda: B.events(Bh, 'svc_failed') and B.events(Bh, 'hub_down'), 30)
     r = java(wait=30)
     B.check('второй сторож подхватил, связь есть', r['ok'] and kv()['hub'] == Bh['url'], r)
     B.check('про уже известный молчащий узел повторной тревоги нет', not [a for a in r['alerts'] if 'Ridge' in a[3]], r['alerts'])
     B.check('беда, случившаяся во время смены сторожа, не потерялась', [a for a in r['alerts'] if 'Упала служба Milo Bot' in a[3] and a[2] == 'alerts'], r['alerts'])
     B.check('сосед сообщил, что сторож не работает, хотя узел жив', [a for a in r['alerts'] if a[3] == 'Сторож Summit не отвечает' and a[2] == 'warn'], r['alerts'])
-    B.stop('agent-summit')                                       # теперь умер весь сервер
+    B.stop('agent-summit')  # now the whole server died
     r2 = B.wait_for(lambda: (lambda x: x if [a for a in x['alerts'] if a[3] == 'Summit молчит'] else None)(java(wait=10)), 40, 0.2)
     B.check('о смерти сервера со сторожем сообщил второй сторож', r2 is not None, r2)
     B.set_unit('aurora', 'milo-bot.service', state='active')

@@ -1,26 +1,24 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Laputa: агент и сторож для личной панели серверов.
+"""Laputa: agent and watchman (hub) for a personal server panel.
 
-Один файл, только стандартная библиотека Python 3.7+. Работает на любом Linux:
-метрики берутся из /proc, службы видны и управляются там, где есть systemd
-(Debian, Ubuntu, RHEL и его родня, Fedora, Arch, openSUSE), контейнеры там, где есть Docker.
-На системах без systemd агент показывает метрики, контейнеры и подаёт сигнал.
+One file, Python 3.7+ standard library only. Runs on any Linux: metrics come from /proc,
+services are visible where systemd exists, containers where Docker exists.
 
-  агент   собирает метрики и состояние служб, сам ходит к сторожам (входящих портов не открывает),
-          выполняет команды панели по белому списку. Работает от root.
-  сторож  принимает сигналы агентов, решает, кто замолчал, ведёт журнал событий
-          и отвечает приложению. Работает от отдельного пользователя без прав.
+  agent   collects metrics and service states, connects out to the watchmen (no inbound ports),
+          runs whitelisted panel commands. Runs as root.
+  hub     receives agent signals, decides who went silent, keeps the event log
+          and answers the app. Runs as an unprivileged user.
 
-Команды:
-  laputa.py install-hub   --host АДРЕС [--port 8743] [--name ИМЯ] [--place МЕСТО] [--open-port]
-  laputa.py install-agent --hub КЛЮЧ [--hub КЛЮЧ2] [--name ИМЯ] [--place МЕСТО]
-  laputa.py keys          показать ключи и команду для подключения узлов
-  laputa.py rekey         выпустить новый ключ приложения (старый перестанет работать)
-  laputa.py status        что видит локальный сторож
-  laputa.py uninstall     убрать службы и настройки с этого сервера
+Commands:
+  laputa.py install-hub   --host ADDRESS [--port 8743] [--name NAME] [--place PLACE] [--open-port] [--lang en|ru]
+  laputa.py install-agent --hub KEY [--hub KEY2] [--name NAME] [--place PLACE] [--lang en|ru]
+  laputa.py keys          print the keys and the command for adding nodes
+  laputa.py rekey         issue a new app key (the old one stops working)
+  laputa.py status        what the local watchman sees, or which watchmen the agent reports to
+  laputa.py uninstall     remove the services and settings from this server
 
-Свои действия узла (кнопки в приложении) описываются в /etc/laputa/actions.ini.
+Node actions (buttons in the app) are defined in /etc/laputa/actions.ini.
 """
 
 import argparse
@@ -66,14 +64,14 @@ ACTIONS_FILE = os.path.join(ETC, 'actions.ini')
 
 
 def _pick_lang():
-    """Язык сообщений сервера (консоль, журнал): ru или en. LAPUTA_LANG, затем выбор при установке, затем локаль."""
+    """Server message language (console, journal): LAPUTA_LANG, then the install-time choice, then the locale."""
     v = os.environ.get('LAPUTA_LANG', '').lower()[:2]
     if v in ('ru', 'en'):
         return v
     for p in (AGENT_CFG, HUB_CFG):
         try:
             with open(p, encoding='utf-8') as f:
-                return 'en' if json.load(f).get('lang') == 'en' else 'ru'   # установки до 1.2 знали только русский
+                return 'en' if json.load(f).get('lang') == 'en' else 'ru'  # installs before 1.2 were Russian-only
         except (OSError, ValueError, AttributeError):
             pass
     loc = (os.environ.get('LC_ALL') or os.environ.get('LC_MESSAGES') or os.environ.get('LANG') or '').lower()[:2]
@@ -84,40 +82,39 @@ SRV_LANG = _pick_lang()
 
 
 def L(ru, en):
-    """Строка на языке сервера."""
     return en if SRV_LANG == 'en' else ru
 
 
 BOOT_ID_FILE = os.environ.get('LAPUTA_BOOT_ID', '/proc/sys/kernel/random/boot_id')
 REBOOT_FILE = os.environ.get('LAPUTA_REBOOT_FILE', '/var/run/reboot-required')
 
-_SPEED = float(os.environ.get('LAPUTA_SPEED', '1'))  # только для стенда: ускоряет все таймеры
-BEAT_EVERY = 10 / _SPEED          # с, как часто агент подаёт сигнал
-STALE_AFTER = 35 / _SPEED         # с без сигнала: «запаздывает»
-DOWN_AFTER = 75 / _SPEED          # с без сигнала: «молчит»
-PEER_FRESH = 40 / _SPEED          # с, насколько свежим должен быть взгляд второго сторожа
+_SPEED = float(os.environ.get('LAPUTA_SPEED', '1'))  # test bench only: speeds up all timers
+BEAT_EVERY = 10 / _SPEED  # s between agent signals
+STALE_AFTER = 35 / _SPEED  # s without a signal: late
+DOWN_AFTER = 75 / _SPEED  # s without a signal: silent
+PEER_FRESH = 40 / _SPEED  # s, max age of the other watchman's view
 
 
 def _envf(name, default):
-    # переопределения только для стенда; на настоящем сервере их нет
+    # test bench overrides
     return float(os.environ.get(name, default))
 
 
-BOOT_CHECK = _envf('LAPUTA_BOOT_CHECK', 180 / _SPEED)       # с после загрузки: сверка, все ли службы поднялись
-REBOOT_MUTE = 600 / _SPEED                                 # с тишины по узлу, который ушёл на перезагрузку из панели
-REBOOT_POLL = _envf('LAPUTA_REBOOT_POLL', 60 / _SPEED)      # с между проверками «опустел ли узел»
-REBOOT_HOUR = _envf('LAPUTA_REBOOT_HOUR', 3600 / _SPEED)    # сколько секунд в часе ожидания «когда опустеет»
-WARN_LEAD = _envf('LAPUTA_WARN_LEAD', 300 / _SPEED)         # с от первого предупреждения игрокам до перезагрузки
-MAINT_EVERY = 6 * 3600 / _SPEED                            # с между проверками обновлений
+BOOT_CHECK = _envf('LAPUTA_BOOT_CHECK', 180 / _SPEED)  # s after boot: check that all services came up
+REBOOT_MUTE = 600 / _SPEED  # s of silence for a node rebooted from the panel
+REBOOT_POLL = _envf('LAPUTA_REBOOT_POLL', 60 / _SPEED)  # s between "is the node empty" checks
+REBOOT_HOUR = _envf('LAPUTA_REBOOT_HOUR', 3600 / _SPEED)  # seconds per hour of "when empty" waiting
+WARN_LEAD = _envf('LAPUTA_WARN_LEAD', 300 / _SPEED)  # s from the first player warning to the reboot
+MAINT_EVERY = 6 * 3600 / _SPEED  # s between update checks
 MAINT_FIRST = _envf('LAPUTA_MAINT_FIRST', 120 / _SPEED)
-SUGGEST_EVERY = _envf('LAPUTA_SUGGEST_EVERY', 1800 / _SPEED)  # с между поисками новых служб
-CAND_AGE = _envf('LAPUTA_CAND_AGE', 3600 / _SPEED)          # служба должна проработать столько, чтобы её предложить
+SUGGEST_EVERY = _envf('LAPUTA_SUGGEST_EVERY', 1800 / _SPEED)  # s between service discovery runs
+CAND_AGE = _envf('LAPUTA_CAND_AGE', 3600 / _SPEED)  # a service must run this long to be suggested
 PROC = os.environ.get('LAPUTA_PROC', '/proc')
 BACKUP_ROOTS = os.environ.get('LAPUTA_BACKUP_ROOTS', '/opt:/srv:/var/backups:/root:/home:/backup:/backups:/mnt:/var/lib:/data').split(':')
 LOGIN_EVERY = 20 / _SPEED
-GROUP_WINDOW = 180 / _SPEED       # узлы одного места, замолчавшие в этом окне, считаются одной бедой
+GROUP_WINDOW = 180 / _SPEED  # nodes of one place going silent within this window count as one incident
 SYSTEMD_DIR = os.environ.get('LAPUTA_SYSTEMD', '/etc/systemd/system')
-# Какая система запуска служб на узле. Панель умеет systemd; на остальных работает без раздела «Службы».
+# Init system. Services need systemd; elsewhere the node works without them.
 INIT = os.environ.get('LAPUTA_INIT') or ('systemd' if os.path.isdir('/run/systemd/system') else 'none')
 NO_INIT = 'На этом узле нет systemd, поэтому службы панель здесь не видит. Метрики и тревога о молчании работают.'
 DISK_HIGH = 90.0
@@ -133,7 +130,7 @@ def log(*a):
 
 
 class Err(ValueError):
-    """Ошибка для панели: код и параметры, чтобы приложение показало её на языке пользователя, плюс русский текст."""
+    """Error for the app: a code and params so it can show the message in the user's language, plus a fallback text."""
 
     def __init__(self, code, text, **p):
         super().__init__(text)
@@ -141,7 +138,7 @@ class Err(ValueError):
         self.p = p
 
 
-# ---------------------------------------------------------------- общее
+# ---------------------------------------------------------------- common
 
 def jload(path, default=None):
     try:
@@ -219,11 +216,11 @@ class HubError(Exception):
 
 
 def hub_call(hub, method, path, body=None, timeout=15):
-    """Запрос к сторожу с проверкой отпечатка его сертификата."""
+    """Request to a watchman, checking its certificate fingerprint."""
     u = urlsplit(hub['url'])
     ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
     ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE  # доверие задаёт отпечаток ниже, а не цепочка
+    ctx.verify_mode = ssl.CERT_NONE  # trust comes from the pinned fingerprint below, not the chain
     conn = http.client.HTTPSConnection(u.hostname, u.port or 443, timeout=timeout, context=ctx)
     try:
         conn.connect()
@@ -245,7 +242,7 @@ def hub_call(hub, method, path, body=None, timeout=15):
         conn.close()
 
 
-# ---------------------------------------------------------------- метрики
+# ---------------------------------------------------------------- metrics
 
 FS_OK = {'ext2', 'ext3', 'ext4', 'xfs', 'btrfs', 'zfs', 'f2fs', 'jfs', 'reiserfs', 'bcachefs'}
 NET_SKIP = ('lo', 'veth', 'docker', 'br-', 'virbr', 'awg', 'wg', 'tun', 'tap', 'tailscale', 'dummy', 'sit', 'ip6tnl')
@@ -364,7 +361,7 @@ def os_name():
 
 
 class Sampler(threading.Thread):
-    """Раз в 5 секунд считает загрузку процессора и скорость сети."""
+    """CPU load and network rate, sampled every 5 seconds."""
 
     def __init__(self):
         super().__init__(daemon=True)
@@ -387,7 +384,7 @@ class Sampler(threading.Thread):
                 el = max(0.5, t - self._t)
                 self.net = [int(max(0, n[0] - self._n[0]) / el), int(max(0, n[1] - self._n[1]) / el)]
                 self._c, self._n, self._t = c, n, t
-            except Exception as e:  # метрики не должны ронять агент
+            except Exception as e:  # metrics must never crash the agent
                 log(L('метрики:', 'metrics:'), e)
 
 
@@ -420,7 +417,7 @@ NOISE = ('systemd-', 'dbus', 'getty@', 'serial-getty@', 'user@', 'user-runtime-d
 
 
 def unit_states(units):
-    """Состояние служб одним вызовом systemctl."""
+    """Service states in one systemctl call."""
     if not units or INIT != 'systemd':
         return {}
     rc, out = sh(['systemctl', 'show', '--no-pager', '--property=' + SHOW_PROPS, '--'] + list(units), timeout=15)
@@ -428,7 +425,7 @@ def unit_states(units):
     mono = time.monotonic()
     wall = time.time()
     blocks = [b for b in out.split('\n\n') if 'ActiveState=' in b]
-    by_order = len(blocks) == len(units)  # systemctl отвечает в порядке запроса; так переживаем псевдонимы юнитов
+    by_order = len(blocks) == len(units)  # systemctl answers in request order; this survives unit aliases
     for i, block in enumerate(blocks):
         d = {}
         for line in block.splitlines():
@@ -523,7 +520,7 @@ class Rcon:
     def command(self, cmd):
         self._send(2, 2, cmd)
         _, _, body = self._recv()
-        self.s.settimeout(0.25)  # длинные ответы приходят несколькими пакетами
+        self.s.settimeout(0.25)  # long replies arrive in several packets
         try:
             while len(body) < 60000:
                 _, _, more = self._recv()
@@ -543,7 +540,7 @@ class Rcon:
 # ---------------------------------------------------------------- Docker
 
 def parse_iso(s):
-    """'2026-10-08T12:00:00.123456789Z' -> unix-время; нулевая дата Docker -> None."""
+    """'2026-10-08T12:00:00.123456789Z' -> unix time; Docker's zero date -> None."""
     if not s or s.startswith('0001-'):
         return None
     m = re.match(r'(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)(?:\.\d+)?(Z|[+-]\d\d:?\d\d)?$', s.strip())
@@ -570,7 +567,7 @@ def docker_ports(text):
 
 
 def docker_list():
-    """Все контейнеры: {имя: {state, sub, since, restarts, ports, image}}. Без Docker пусто."""
+    """All containers: {name: {state, sub, since, restarts, ports, image}}. Empty without Docker."""
     if not shutil.which('docker'):
         return {}
     rc, out = sh(['docker', 'ps', '-a', '--no-trunc', '--format', '{{json .}}'], timeout=15)
@@ -613,7 +610,7 @@ def docker_list():
 
 
 def service_states(units):
-    """Состояние юнитов systemd и контейнеров Docker (имена вида docker:NAME) в одном словаре."""
+    """systemd units and Docker containers (named docker:NAME) in one dict."""
     sysd = [u for u in units if not u.startswith('docker:')]
     res = unit_states(sysd) if sysd else {}
     if any(u.startswith('docker:') for u in units):
@@ -634,10 +631,10 @@ def discover_units():
     return out
 
 
-# ---------------------------------------------------------------- сеть: кто слушает, кто подключён
+# ---------------------------------------------------------------- network: who listens, who is connected
 
 def unit_of_pid(pid):
-    """Юнит systemd, которому принадлежит процесс: по его cgroup."""
+    """The systemd unit a process belongs to, from its cgroup."""
     try:
         with open('%s/%d/cgroup' % (PROC, pid)) as f:
             text = f.read()
@@ -648,7 +645,7 @@ def unit_of_pid(pid):
 
 
 def listen_map():
-    """{юнит: [порты]} для сокетов, которые слушают процессы служб. Нужен ss (iproute2)."""
+    """{unit: [ports]} for sockets that service processes listen on. Needs ss (iproute2)."""
     if not shutil.which('ss'):
         return {}
     rc, out = sh(['ss', '-Hltnup'], timeout=10)
@@ -671,7 +668,7 @@ def listen_map():
 
 
 def established_counts():
-    """{локальный порт: число установленных TCP-соединений с внешних адресов}."""
+    """{local port: number of established TCP connections from outside}."""
     if not shutil.which('ss'):
         return {}
     rc, out = sh(['ss', '-Htn', 'state', 'established'], timeout=10)
@@ -695,7 +692,7 @@ def established_counts():
 
 
 def tunnel_peers(window=180):
-    """Активные пиры AmneziaWG и WireGuard: свежее рукопожатие за последние 3 минуты."""
+    """Active AmneziaWG and WireGuard peers: a handshake within the last 3 minutes."""
     res = {}
     now = time.time()
     for tool in ('awg', 'wg'):
@@ -711,14 +708,14 @@ def tunnel_peers(window=180):
     return [{'iface': k, 'n': v} for k, v in sorted(res.items())]
 
 
-# ---------------------------------------------------------------- игровая консоль (RCON)
+# ---------------------------------------------------------------- game console (RCON)
 
 GAME_TYPES = ('minecraft', 'rcon')
 LIST_RE = re.compile(r'There are (\d+) of a max(?:imum)? of (\d+) players online:?\s*(.*)', re.S)
 
 
 def rcon_run(cfg, commands):
-    """Выполнить несколько команд за одно подключение. Возвращает ответы по порядку."""
+    """Run several commands over one connection. Returns the replies in order."""
     try:
         r = Rcon(cfg['host'], cfg['port'], cfg.get('password', ''))
     except RconError as e:
@@ -756,7 +753,7 @@ def game_probe(cfg):
     return info
 
 
-# ---------------------------------------------------------------- бэкапы
+# ---------------------------------------------------------------- backups
 
 ARCHIVE_RE = re.compile(r'\.(tar|tgz|gz|zst|xz|bz2|zip|7z|rar|sql|dump|bak|img|qcow2|borg)$', re.I)
 
@@ -789,7 +786,7 @@ def backup_info(path, label=''):
 
 
 def backup_suggest(known, budget=2.5):
-    """Папки, похожие на бэкапы, и подсказки из таймеров и cron."""
+    """Backup-like folders, plus hints from timers and cron."""
     t0 = time.time()
     roots = BACKUP_ROOTS
     seen, found = 0, []
@@ -834,7 +831,7 @@ def backup_suggest(known, budget=2.5):
     return {'dirs': found[:12], 'hints': hints[:12]}
 
 
-# ---------------------------------------------------------------- действия узла
+# ---------------------------------------------------------------- node actions
 
 ACTIONS_EXAMPLE_RU = """# Действия узла: кнопки в приложении Laputa. Каждый раздел в квадратных скобках — одна кнопка.
 # Добавлять действия можно только здесь, на самом сервере: приложение их показывает и запускает, но не создаёт.
@@ -903,15 +900,15 @@ def run_action(a):
     return rc, out[-16000:]
 
 
-# ---------------------------------------------------------------- обслуживание: обновления и перезагрузка
+# ---------------------------------------------------------------- maintenance: updates and reboot
 
 def _ver_key(v):
-    # 6.1.0-25-amd64 -> [6, 1, 0, 25, 64]: номер сборки ядра Debian и Ubuntu тоже идёт в сравнение
+    # 6.1.0-25-amd64 -> [6, 1, 0, 25, 64]: the Debian/Ubuntu build number counts too
     return [int(x) for x in re.findall(r'\d+', v)]
 
 
 def kernel_reboot_needed():
-    """Установлено ядро новее работающего: нужна перезагрузка. Работает на любом дистрибутиве."""
+    """A newer kernel than the running one is installed: reboot needed. Works on any distro."""
     running = _ver_key(os.uname().release)
     try:
         mods = [m for m in os.listdir('/lib/modules') if re.match(r'\d', m)]
@@ -977,13 +974,13 @@ def maint_check():
     return res
 
 
-# ---------------------------------------------------------------- входы по SSH
+# ---------------------------------------------------------------- SSH logins
 
 ACCEPT_RE = re.compile(r'Accepted (\S+) for (\S+) from (\S+) port (\d+)')
 
 
 class LoginWatch:
-    """Следит за успешными входами по SSH: журнал systemd или файлы журналов там, где его нет."""
+    """Watches successful SSH logins: the systemd journal, or log files where there is none."""
 
     def __init__(self):
         self.since = time.time()
@@ -1013,7 +1010,7 @@ class LoginWatch:
                 st = os.stat(path)
             except OSError:
                 continue
-            ino, off = self.files.get(path, (st.st_ino, st.st_size))   # при первом взгляде историю не читаем
+            ino, off = self.files.get(path, (st.st_ino, st.st_size))  # the first look skips history
             if ino != st.st_ino or off > st.st_size:
                 off = 0
             try:
@@ -1033,7 +1030,7 @@ class LoginWatch:
         self.items.append({'ts': round(ts, 3), 'method': m.group(1), 'user': m.group(2)[:32], 'ip': m.group(3)[:64]})
 
 
-# ---------------------------------------------------------------- проверка соседа снаружи
+# ---------------------------------------------------------------- checking a neighbour from outside
 
 def probe(ip, port):
     try:
@@ -1080,7 +1077,7 @@ def probe(ip, port):
     return res
 
 
-# ---------------------------------------------------------------- разбор прошлой загрузки
+# ---------------------------------------------------------------- previous boot analysis
 
 def read_boot_id():
     try:
@@ -1091,7 +1088,7 @@ def read_boot_id():
 
 
 def postmortem():
-    """Чем закончилась прошлая загрузка: по её журналу, если он сохраняется между загрузками."""
+    """How the previous boot ended, from its journal if it is kept across boots."""
     if not shutil.which('journalctl'):
         return {'cause': 'unknown', 'why': 'nojournal', 'lines': []}
     rc, out = sh(['journalctl', '-b', '-1', '-n', '400', '-o', 'short-unix', '--no-pager', '-q'], timeout=30)
@@ -1108,11 +1105,11 @@ def postmortem():
     tail = []
     for l in lines[-14:]:
         ts, _, rest = l.partition(' ')
-        rest = re.sub(r'^\S+ ', '', rest, count=1)   # имя хоста
+        rest = re.sub(r'^\S+ ', '', rest, count=1)
         tail.append([int(float(ts)), rest[:240]])
     return {'cause': cause, 'oom': bool(oom), 'last_ts': int(last_ts), 'lines': tail}
 
-# ---------------------------------------------------------------- агент
+# ---------------------------------------------------------------- agent
 
 KNOWN_RE = re.compile(r'^(nginx|apache2|httpd|caddy|traefik|haproxy|docker|containerd|postgres|postgresql|mariadb|mysql|redis|mongod|'
                       r'jellyfin|plex|emby|navidrome|x-ui|3x-ui|xray|sing-box|hysteria|tuic|awg-quick@|wg-quick@|openvpn|'
@@ -1120,7 +1117,7 @@ KNOWN_RE = re.compile(r'^(nginx|apache2|httpd|caddy|traefik|haproxy|docker|conta
 
 
 def unit_props(units, props):
-    """Произвольные свойства юнитов одним вызовом systemctl на пачку."""
+    """Arbitrary unit properties, one systemctl call per batch."""
     res = {}
     units = list(units)
     for i in range(0, len(units), 80):
@@ -1170,7 +1167,7 @@ class Agent:
             jsave(self.path, self.cfg)
 
     def migrate(self):
-        """Настройки 1.0: блок mc становится игровой консолью, его папка бэкапов уходит в общий список."""
+        """1.0 settings: the mc block becomes the game console, its backup folder joins the common list."""
         mc = self.cfg.pop('mc', None)
         if mc:
             self.cfg['game'] = {'type': 'minecraft', 'host': mc.get('host', '127.0.0.1'), 'port': mc.get('port', 25575),
@@ -1181,7 +1178,7 @@ class Agent:
                     bl.append({'path': mc['backups'], 'label': 'Minecraft'})
             self.save()
 
-    # --- данные
+    # --- data
 
     def services(self, fresh=False):
         with self.lock:
@@ -1252,14 +1249,14 @@ class Agent:
             body['boot_check'] = self.boot_check
         local = next((h for h in self.cfg['hubs'] if h.get('local')), None)
         if local and not hub.get('local'):
-            try:  # сторож передаёт соседу, кого он сам видит
+            try:  # the watchman tells its neighbour whom it sees
                 body['view'] = hub_call(local, 'GET', '/a/view', timeout=5).get('ages', {})
                 body['hub_ok'] = True
             except Exception:
-                body['hub_ok'] = False  # узел жив, а его сторож не отвечает: сосед об этом сообщит
+                body['hub_ok'] = False  # node alive but its watchman is not answering: the neighbour reports it
         return body
 
-    # --- после загрузки
+    # --- after boot
 
     def boot_start(self):
         st = jload(AGENT_STATE, {}) or {}
@@ -1267,7 +1264,7 @@ class Agent:
             log(L('новая загрузка: разбираю прошлую', 'new boot: looking at the previous one'))
             self.pm = postmortem()
             self.pm.update(boot_id=self.boot_id, prev_ts=st.get('ts'))
-            self.state_ready = False   # прежний список работавших служб нужен для сверки, не перезаписываем
+            self.state_ready = False  # keep the previous list of running services for the post-boot check
             t = threading.Timer(BOOT_CHECK, self.do_boot_check, args=(st.get('active', []),))
             t.daemon = True
             t.start()
@@ -1296,7 +1293,7 @@ class Agent:
                 log(L('состояние агента:', 'agent state:'), e)
             time.sleep(30 / _SPEED)
 
-    # --- потоки
+    # --- threads
 
     def beat_once(self, hub, timeout=12):
         hub_call(hub, 'POST', '/a/beat', self.beat_body(hub), timeout=timeout)
@@ -1362,7 +1359,7 @@ class Agent:
             if u.get('since') and now - u['since'] < CAND_AGE:
                 continue
             out.append({'unit': u['unit'], 'reasons': u['reasons'], 'ports': u['ports'], 'desc': u.get('desc', '')})
-        with self.lock:   # пока искали, службу могли добавить в панель или отклонить
+        with self.lock:  # the service may have been added or dismissed meanwhile
             skip = {s['unit'] for s in self.cfg.get('services', [])} | set(self.cfg.get('dismissed', []))
             self.candidates = [c for c in out if c['unit'] not in skip][:5]
 
@@ -1383,7 +1380,7 @@ class Agent:
         while True:
             time.sleep(3600)
 
-    # --- автовыбор служб
+    # --- service discovery
 
     def suggest(self):
         units = discover_units()
@@ -1434,7 +1431,7 @@ class Agent:
         out.sort(key=lambda x: (-x['score'], x['unit']))
         return out[:150]
 
-    # --- кого заденет
+    # --- who is affected
 
     def impact(self, unit=None):
         svcs = [s for s in self.services(fresh=True) if unit is None or s['unit'] == unit]
@@ -1458,7 +1455,7 @@ class Agent:
         total = len(players or []) + sum(c['n'] for c in conns) + sum(t['n'] for t in tunnels)
         return {'players': players, 'conns': conns, 'tunnels': tunnels, 'total': total}
 
-    # --- перезагрузка
+    # --- reboot
 
     def say(self, text):
         g = self.cfg.get('game')
@@ -1478,7 +1475,7 @@ class Agent:
 
     def do_reboot(self):
         self.going_down = int(time.time())
-        for hub in self.cfg['hubs']:   # последний сигнал: сторожа заглушат тревоги по узлу и запишут перезагрузку
+        for hub in self.cfg['hubs']:  # last signal: watchmen mute the node's alerts and record the reboot
             try:
                 self.beat_once(hub, timeout=5)
             except Exception:
@@ -1526,7 +1523,7 @@ class Agent:
                 self.pending = None
                 self.kick.set()
 
-    # --- команды панели
+    # --- panel commands
 
     def _svc(self, unit):
         unit = str(unit or '')
@@ -1580,7 +1577,7 @@ class Agent:
             return {'ok': False, 'error': 'Сбой агента: %s' % e, 'code': 'agent_crash', 'p': {'err': str(e)[:200]}}
 
     def dispatch(self, t, a):
-        # --- службы
+        # --- services
         if t in ('svc.restart', 'svc.start', 'svc.stop'):
             s = self._svc(a.get('unit'))
             verb = t.split('.')[1]
@@ -1647,7 +1644,7 @@ class Agent:
             return {'ok': True}
         if t == 'impact':
             return {'ok': True, 'impact': self.impact(a.get('unit') or None)}
-        # --- узел
+        # --- node
         if t == 'node.reboot':
             if self.pending:
                 raise Err('reboot_pending', 'Перезагрузка уже ждёт своего часа')
@@ -1677,13 +1674,13 @@ class Agent:
             return {'ok': True, 'maint': self.maint}
         if t == 'diag.probe':
             return {'ok': True, 'probe': probe(a.get('ip'), a.get('port'))}
-        # --- игровая консоль (mc.* — имена из версии 1.0)
+        # --- game console (mc.* are 1.0 names)
         if t in ('game.setup', 'mc.setup'):
             old = self.cfg.get('game') or {}
             typ = a.get('type') if a.get('type') in GAME_TYPES else old.get('type', 'minecraft')
             cfg = {'type': typ, 'host': str(a.get('host') or '127.0.0.1').strip()[:100], 'port': int(a.get('port') or 25575),
                    'password': str(a.get('password') or '') or old.get('password', ''), 'quick': old.get('quick', [])}
-            rcon_run(cfg, [])  # проверка входа
+            rcon_run(cfg, [])
             with self.lock:
                 self.cfg['game'] = cfg
                 if t == 'mc.setup' and a.get('backups'):
@@ -1726,7 +1723,7 @@ class Agent:
                     q.append({'label': label or cmd[:30], 'command': cmd})
                 self.save()
             return {'ok': True}
-        # --- бэкапы
+        # --- backups
         if t == 'backup.add':
             self._backup_add(a)
             return {'ok': True}
@@ -1741,7 +1738,7 @@ class Agent:
             with self.lock:
                 known = {b['path'] for b in self.cfg.get('backups', [])}
             return {'ok': True, **backup_suggest(known)}
-        # --- действия узла
+        # --- node actions
         if t == 'action.run':
             act = next((x for x in load_actions() if x['id'] == a.get('id')), None)
             if not act:
@@ -1767,7 +1764,7 @@ class Agent:
             self.save()
         self.bk_cache = (0, [])
 
-# ---------------------------------------------------------------- сторож
+# ---------------------------------------------------------------- watchman (hub)
 
 CAUSE_RU = {'clean': 'узел выключили штатно', 'oom': 'кончилась память, ядро убивало процессы', 'panic': 'паника ядра',
             'lockup': 'система зависла', 'abrupt': 'обрыв без записей в журнале: похоже на пропажу питания или действия хостера',
@@ -1785,27 +1782,27 @@ class Hub:
         self.events = st.get('events', [])
         self.seq = st.get('seq', 0)
         self.hist = {k: collections.deque(v, maxlen=1440) for k, v in st.get('hist', {}).items()}
-        self.acc = {}       # накопление за текущую минуту
+        self.acc = {}  # current minute's accumulator
         self.ver = int(time.time()) % 100000 * 1000
-        self.cmds = {}      # node -> очередь команд
+        self.cmds = {}  # node -> command queue
         self.results = {}   # cmd id -> {'ev', 'res'}
-        self.expect = {}    # (node, unit) -> до какого времени остановка ожидаема
-        self.cool = {}      # (node, unit|mount, type) -> когда было событие
-        self.views = {}     # id сторожа-соседа -> {'ts', 'ages'}
-        self.bad = {}       # ip -> [счётчик, начало окна]
+        self.expect = {}  # (node, unit) -> stop expected until
+        self.cool = {}  # (node, unit|mount, type) -> last event time
+        self.views = {}  # neighbour watchman id -> {'ts', 'ages'}
+        self.bad = {}  # ip -> [count, window start]
         self.diag_busy = set()
-        self.pollgen = {}   # node -> номер последнего опроса
-        for n in self.nodes.values():  # после перезапуска сторожа даём узлам время объявиться
+        self.pollgen = {}  # node -> latest poll number
+        for n in self.nodes.values():  # after a restart, give nodes time to report
             if n.get('status') in ('up', 'stale'):
                 n['last_seen'] = self.started
             for k, v in (('disk_alarm', []), ('backup_alarm', []), ('ssh_known', []), ('login_seen', []), ('flags_seen', {})):
                 n.setdefault(k, v)
 
-    # --- события
+    # --- events
 
     def emit(self, typ, sev, node, title, text='', key='node', p=None):
-        # key отличает предметы тревог на одном узле: приложение заменяет тревогу отбоем с тем же ключом.
-        # p — параметры, по которым приложение собирает текст на языке пользователя; title и text — русский запасной вариант.
+        # key identifies the alert subject on a node: the app replaces an alert with the all-clear of the same key.
+        # p holds the params the app builds localized text from; title and text are a Russian fallback.
         self.seq += 1
         e = {'seq': self.seq, 'ts': int(time.time()), 'type': typ, 'sev': sev, 'node': node, 'key': key, 'title': title, 'text': text, 'p': p or {}}
         self.events.append(e)
@@ -1830,7 +1827,7 @@ class Hub:
     def muted(self, n):
         return n.get('muted_until', 0) > time.time()
 
-    # --- сигнал агента
+    # --- agent signal
 
     def on_beat(self, b, ip=''):
         nid = b.get('node')
@@ -1857,12 +1854,12 @@ class Hub:
                       'actions': (b.get('actions') or [])[:40], 'backups': (b.get('backups') or [])[:10], 'maint': b.get('maint'),
                       'candidates': (b.get('candidates') or [])[:5], 'pending': b.get('pending')})
             gd = b.get('going_down') or 0
-            if gd and gd != n.get('gd_seen'):  # агент сам сказал, что уходит на перезагрузку
+            if gd and gd != n.get('gd_seen'):  # the agent said it is going down for a reboot
                 n['gd_seen'] = gd
                 n['rebooting'] = int(now)
                 n['muted_until'] = now + REBOOT_MUTE
                 self.emit('reboot', 'info', nid, '%s перезагружается из панели' % name, 'Тревоги по узлу заглушены на 10 минут.', key='reboot', p={'name': name})
-            elif not gd and n.get('rebooting'):   # агент снова на связи и не уходит: перезагрузка закончилась или не удалась
+            elif not gd and n.get('rebooting'):  # agent is back and not going down: the reboot finished or failed
                 n.pop('rebooting', None)
             pm = b.get('pm')
             if isinstance(pm, dict) and pm.get('boot_id') and pm['boot_id'] != n.get('pm_boot'):
@@ -1889,7 +1886,7 @@ class Hub:
                 self.views[nid] = {'ts': now, 'ages': {k: v for k, v in b['view'].items() if isinstance(v, (int, float))}}
             if b.get('hub') and 'hub_ok' in b:
                 bad = 0 if b['hub_ok'] else n.get('hub_bad', 0) + 1
-                if bad == 3:  # три сигнала подряд, чтобы не шуметь при перезапуске
+                if bad == 3:  # three signals in a row, to stay quiet during restarts
                     self.emit('hub_down', 'warn', nid, 'Сторож %s не отвечает' % name,
                               'Сам узел жив, но сторож на нём не работает. Пока тревоги идут только через сторожа %s.' % self.cfg['name'], key='hub',
                               p={'name': name, 'hub': self.cfg['name']})
@@ -1937,11 +1934,11 @@ class Hub:
             self.hist.setdefault(nid, collections.deque(maxlen=1440)).append([a[0] * 60, round(a[2] / a[1], 1), round(a[3] / a[1], 1), round(a[4], 1)])
 
     def diff_services(self, n, prev, cur):
-        if n.get('rebooting'):   # узел гасит службы сам, перед перезагрузкой: это не беда
+        if n.get('rebooting'):  # the node stops services itself before a reboot: not an incident
             return
         nid, name = n['id'], n['name']
         now = time.time()
-        loud = not self.muted(n)   # заглушённый узел пишет события без уведомлений
+        loud = not self.muted(n)  # a muted node records events without notifications
         for s in cur:
             p = prev.get(s['unit'])
             if not p:
@@ -2057,10 +2054,10 @@ class Hub:
             self.emit('reboot_gaveup', 'warn', n['id'], '%s так и не опустел' % n['name'],
                       'Перезагрузку отменил: за %s ч кто-то всё время был на узле.' % g.get('hours'), key='reboot', p={'name': n['name'], 'hours': g.get('hours')})
 
-    # --- кто замолчал
+    # --- who went silent
 
     def peer_sees(self, nid):
-        """True: сосед видит узел. False: соседи есть и не видят. None: спросить некого."""
+        """True: a neighbour sees the node. False: neighbours exist and don't. None: nobody to ask."""
         now = time.time()
         answers = []
         for pid, v in self.views.items():
@@ -2068,7 +2065,7 @@ class Hub:
             if pid == nid or not peer or peer.get('status') != 'up' or now - v['ts'] > PEER_FRESH:
                 continue
             age = v['ages'].get(nid)
-            # сигналы приходят обоим сторожам почти одновременно: если узел умер, у соседа он тоже давно молчит
+            # signals reach both watchmen almost at once: if the node died, the neighbour has not heard it for a while either
             answers.append(age is not None and age + (now - v['ts']) < STALE_AFTER)
         if not answers:
             return None
@@ -2083,7 +2080,7 @@ class Hub:
         if mates:
             group = sorted(mates + [n], key=lambda x: x.get('since', 0))
             names = [x['name'] for x in group]
-            lead = min(mates, key=lambda x: x.get('down_ts', 0))   # у него уже есть громкая тревога: общая заменит её
+            lead = min(mates, key=lambda x: x.get('down_ts', 0))  # it already has a loud alert; the group alert replaces it
             self.emit('node_down', 'info', n['id'], '%s молчит' % name, 'Сигнала нет больше минуты.' + tail, p={'name': name, 'both': both, 'group': place})
             self.emit('group_down', 'crit', lead['id'], 'Замолчали %s' % ', '.join(names),
                       'Все с места «%s» почти одновременно. Похоже, там пропал свет или интернет.' % place, key='node', p={'names': names, 'place': place})
@@ -2118,7 +2115,7 @@ class Hub:
                     else:
                         self.went_down(n, sees is False)
                 elif st == 'down' and n.get('confirmed') is False and not n.get('quiet'):
-                    if self.peer_sees(n['id']) is False:  # второй сторож тоже потерял узел
+                    if self.peer_sees(n['id']) is False:  # the other watchman lost the node too
                         n['confirmed'] = True
                         self.went_down(n, True)
             for k in [k for k, v in self.expect.items() if v < now]:
@@ -2148,7 +2145,7 @@ class Hub:
             except OSError as e:
                 log(L('не удалось сохранить состояние:', 'could not save state:'), e)
 
-    # --- проверка молчащего узла с соседей
+    # --- checking a silent node from neighbours
 
     def start_diag(self, nid):
         if nid in self.diag_busy:
@@ -2184,7 +2181,7 @@ class Hub:
         finally:
             self.diag_busy.discard(nid)
 
-    # --- ответы приложению
+    # --- answers to the app
 
     PUBLIC = ('place', 'addr', 'agent', 'm', 'services', 'mc', 'game', 'actions', 'backups', 'maint', 'candidates', 'pending', 'pm', 'diag', 'confirmed')
 
@@ -2210,14 +2207,14 @@ class Hub:
     def wait_state(self, since, wait):
         end = time.time() + wait
         with self.cv:
-            if since > self.ver:  # сторожа перезапускали, счёт версий начался заново
+            if since > self.ver:  # watchman restarted, versions start over
                 return self.state()
             while self.ver <= since:
                 left = end - time.time()
                 if left <= 0:
                     return {'v': self.ver, 'ts': int(time.time()), 'same': True}
                 self.cv.wait(left)
-        time.sleep(0.25)  # собрать близкие изменения в один ответ
+        time.sleep(0.25)  # batch close changes into one answer
         return self.state()
 
     def summary(self):
@@ -2267,7 +2264,7 @@ class Hub:
                 if left <= 0:
                     break
                 self.cv.wait(left)
-            if after > self.seq:  # сторожа переустановили, счёт начался заново
+            if after > self.seq:  # watchman reinstalled, the count starts over
                 after = 0
             return {'seq': self.seq, 'events': [e for e in self.events if e['seq'] > after][-30:], 'summary': self.summary(),
                     'problems': self.problems(), 'hub': {'id': self.cfg['id'], 'name': self.cfg['name']}}
@@ -2297,10 +2294,10 @@ class Hub:
         return {'step': step, 'from': start, 'cpu': [round(s[0] / s[3], 1) if s[3] else None for s in sums],
                 'mem': [round(s[1] / s[3], 1) if s[3] else None for s in sums], 'disk': [round(s[2], 1) if s[3] else None for s in sums]}
 
-    # --- команды
+    # --- commands
 
     def dispatch(self, nid, typ, args, timeout):
-        """Отдать команду агенту и дождаться ответа."""
+        """Send a command to the agent and wait for the reply."""
         with self.cv:
             n = self.nodes.get(nid)
             if not n:
@@ -2328,7 +2325,7 @@ class Hub:
             unit = args.get('unit') if isinstance(args, dict) else None
             if n and typ in ('svc.stop', 'svc.restart', 'svc.start') and unit:
                 self.expect[(nid, unit)] = time.time() + 180
-                if typ == 'svc.stop':  # остановили сами: «снова работает» потом не нужно
+                if typ == 'svc.stop':  # stopped on purpose: no "running again" later
                     n.get('svc_bad', {}).pop(unit, None)
         slow = typ in ('svc.restart', 'svc.start', 'svc.stop', 'svc.suggest', 'backup.suggest', 'maint.check', 'impact', 'diag.probe')
         res = self.dispatch(nid, typ, args, 70 if slow else 28 if not typ.startswith('action.') else 620)
@@ -2337,7 +2334,7 @@ class Hub:
     def poll(self, nid, wait):
         end = time.time() + wait
         with self.cv:
-            # новый опрос от узла вытесняет старый: тот мог остаться от убитого процесса агента и унёс бы команду в никуда
+            # a newer poll from the node supersedes the old one, which may belong to a killed agent and would swallow the command
             gen = self.pollgen[nid] = self.pollgen.get(nid, 0) + 1
             while True:
                 if self.pollgen.get(nid) != gen:
@@ -2390,7 +2387,7 @@ class Hub:
         with self.cv:
             return {'ages': {n['id']: int(now - n['last_seen']) for n in self.nodes.values() if 'last_seen' in n and n.get('status') != 'new'}}
 
-    # --- защита от перебора ключа
+    # --- key brute-force protection
 
     def blocked(self, ip):
         b = self.bad.get(ip)
@@ -2484,7 +2481,7 @@ def make_handler(hub):
             u = urlsplit(self.path)
             q = {k: v[0] for k, v in parse_qs(u.query).items()}
             path = u.path
-            if path.startswith('/i/') and method == 'GET':  # раздача установщика узлам
+            if path.startswith('/i/') and method == 'GET':  # installer download for nodes
                 parts = path.split('/')
                 if len(parts) == 4 and token_ok(parts[2], cfg['agent_token']) and parts[3] == 'laputa.py':
                     with open(os.path.abspath(__file__), 'rb') as f:
@@ -2512,7 +2509,7 @@ def make_handler(hub):
                     return self.deny()
                 self.request.settimeout(100)
                 if path == '/v1/cmd':
-                    self.request.settimeout(660)   # действия узла могут идти до 10 минут
+                    self.request.settimeout(660)  # node actions may take up to 10 minutes
                 if path == '/v1/ping':
                     return self.send(200, {'ok': True, 'id': cfg['id'], 'name': cfg['name'], 'version': VERSION, 'ts': int(time.time())})
                 if path == '/v1/state':
@@ -2586,7 +2583,7 @@ def run_hub():
     srv.serve_forever(poll_interval=1)
 
 
-# ---------------------------------------------------------------- установка
+# ---------------------------------------------------------------- install
 
 HUB_UNIT = """[Unit]
 Description={desc}
@@ -2640,7 +2637,7 @@ def python_path():
 
 
 def make_user():
-    """Системный пользователь без входа. useradd есть почти везде, в BusyBox (Alpine) его заменяет adduser."""
+    """System user without login. useradd is almost everywhere; BusyBox (Alpine) has adduser instead."""
     if sh(['id', 'laputa'])[0] == 0:
         return
     nologin = shutil.which('nologin') or next((p for p in ('/usr/sbin/nologin', '/sbin/nologin', '/usr/bin/nologin') if os.path.exists(p)), '/bin/false')
@@ -2661,11 +2658,11 @@ def own(path):
     try:
         shutil.chown(path, 'laputa', 'laputa')
     except LookupError:
-        shutil.chown(path, 'laputa')  # группы laputa нет: хватит владельца
+        shutil.chown(path, 'laputa')  # no laputa group: the owner is enough
 
 
 def start_unit(unit, text):
-    """Включает и запускает службу. Без systemd объясняет, как запускать самому."""
+    """Enable and start a service. Without systemd, explain how to run it."""
     if INIT != 'systemd':
         return False
     sh(['systemctl', 'daemon-reload'])
@@ -2698,7 +2695,7 @@ def put_self():
 
 
 def der_item(buf, pos):
-    """Разбор одного элемента DER: возвращает (начало содержимого, конец элемента)."""
+    """Parse one DER element: returns (content start, element end)."""
     ln = buf[pos + 1]
     pos += 2
     if ln & 0x80:
@@ -2709,14 +2706,14 @@ def der_item(buf, pos):
 
 
 def spki_pin(der):
-    """sha256 от SubjectPublicKeyInfo в base64: формат, который понимает curl --pinnedpubkey."""
+    """base64 sha256 of SubjectPublicKeyInfo, the format curl --pinnedpubkey expects."""
     body, _ = der_item(der, 0)            # Certificate
     pos, _ = der_item(der, body)          # TBSCertificate
     if der[pos] == 0xa0:                  # [0] version
         pos = der_item(der, pos)[1]
     for _ in range(5):                    # serial, signature, issuer, validity, subject
         pos = der_item(der, pos)[1]
-    end = der_item(der, pos)[1]           # subjectPublicKeyInfo целиком
+    end = der_item(der, pos)[1]  # whole subjectPublicKeyInfo
     return base64.b64encode(hashlib.sha256(der[pos:end]).digest()).decode('ascii')
 
 
@@ -2771,7 +2768,7 @@ def cmd_install_hub(a):
     os.makedirs(VAR, exist_ok=True)
     make_user()
     old = jload(HUB_CFG, {}) or {}
-    ag = jload(AGENT_CFG, {}) or {}   # если агент на сервере уже стоит, сторож берёт его имя
+    ag = jload(AGENT_CFG, {}) or {}  # reuse the agent's name if it is already installed
     host = socket.gethostname()
     name = a.name or old.get('name') or ag.get('name') or host
     port = a.port or old.get('port') or 8743
@@ -2838,7 +2835,7 @@ def cmd_keys(a):
 
 
 def cmd_rekey(a):
-    """Новый ключ приложения: на случай потери телефона. Узлы перенастраивать не нужно, у них свой ключ."""
+    """New app key, in case the phone is lost. Nodes keep their own key."""
     need_root()
     cfg = jload(HUB_CFG)
     if not cfg:
@@ -2942,7 +2939,7 @@ def main():
     sub.add_parser('status')
     sub.add_parser('uninstall')
     a = p.parse_args()
-    if getattr(a, 'lang', None):   # язык, выбранный при установке, сохраняется в настройках
+    if getattr(a, 'lang', None):  # the install-time language is saved in the settings
         global SRV_LANG
         SRV_LANG = a.lang
     if a.cmd == 'hub':

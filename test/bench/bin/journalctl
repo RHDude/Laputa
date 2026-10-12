@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Подставной journalctl: журнал службы, прошлая загрузка ($FAKE_PREV_BOOT), входы по SSH ($FAKE_SSH).
+# Stub journalctl: service log, previous boot ($FAKE_PREV_BOOT), SSH logins ($FAKE_SSH).
 import os, sys
 a = sys.argv[1:]
 if '-b' in a and a[a.index('-b') + 1] == '-1':

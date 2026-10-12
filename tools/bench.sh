@@ -1,5 +1,5 @@
 #!/bin/bash
-# Управление стендом: bench.sh start | stop
+# Test bench: bench.sh start | stop
 S=${LAPUTA_WORK:-/tmp/laputa-work}; mkdir -p "$S"
 cd "$(dirname "$0")/.."
 stop() { pkill -f 'bench/run\.py serve'; pkill -f 'laputa\.py (hub|agent)'; sleep 1; }

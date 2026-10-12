@@ -6,7 +6,7 @@ import android.content.SharedPreferences;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-/** Настройки приложения: список сторожей с ключами, выбранный режим тревог, служебное состояние проверок. */
+/** App settings: watchmen with keys, alert mode, check state. */
 public final class Store implements Checker.KV {
     private final SharedPreferences sp;
 
@@ -48,13 +48,12 @@ public final class Store implements Checker.KV {
         return a == null ? new JSONArray() : a;
     }
 
-    /** Язык: выбранный в приложении или системный. */
     public String lang() {
         JSONObject s = cfg().optJSONObject("settings");
         return T.pick(s == null ? "" : s.optString("lang", ""), java.util.Locale.getDefault().getLanguage());
     }
 
-    /** true: постоянная связь со сторожем; false: проверка раз в 15 минут. */
+    /** true: persistent connection to the watchman; false: check every 15 minutes. */
     public boolean live() {
         JSONObject s = cfg().optJSONObject("settings");
         return s == null || !"eco".equals(s.optString("mode", "live"));

@@ -1,10 +1,10 @@
 #!/bin/sh
-# Сборка интерфейса в ui/dist: один app.js, styles.css, шрифты.
+# Builds the UI into ui/dist: one app.js, styles.css, fonts.
 set -e
 cd "$(dirname "$0")"
 OUT=${OUT:-dist}
 rm -rf $OUT && mkdir -p $OUT/fonts
-# DEV=1 оставляет макет с тестовыми данными (?mock=ok). Боевая сборка его не содержит.
+# DEV=1 keeps the mock data (?mock=ok). The production build drops it.
 npx esbuild src/app.js --bundle --minify --format=iife --target=chrome90 --define:__DEV__=${DEV:-0} --outfile=$OUT/app.js --log-level=warning
 npx esbuild src/styles.css --minify --outfile=$OUT/styles.css --log-level=warning
 cp index.html $OUT/

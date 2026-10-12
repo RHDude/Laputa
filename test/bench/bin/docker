@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Подставной docker: контейнеры лежат в $FAKE_DOCKER.
+# Stub docker: containers come from $FAKE_DOCKER.
 import json, os, sys, time
 path = os.environ.get('FAKE_DOCKER', '/nonexistent')
 try:

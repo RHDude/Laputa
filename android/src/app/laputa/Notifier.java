@@ -12,8 +12,8 @@ import android.os.Build;
 import org.json.JSONObject;
 
 /**
- * Уведомления. Собирается с SDK уровня 23, поэтому каналы (Android 8+) создаются через рефлексию:
- * самих классов в старом SDK нет, а на устройстве они есть.
+ * Notifications. Built against SDK 23, so channels (Android 8+) are created via reflection:
+ * the classes are missing from the old SDK but present on the device.
  */
 public final class Notifier implements Checker.Alerts {
     public static final String CH_STATUS = "status";
@@ -47,12 +47,11 @@ public final class Notifier implements Checker.Alerts {
             in.close();
             return new JSONObject(buf.toString("UTF-8"));
         } catch (Exception e) {
-            L.i("словарь " + lang + ": " + e);
+            L.i("dictionary " + lang + ": " + e);
             return new JSONObject();
         }
     }
 
-    /** Словарь на текущем языке приложения. */
     public static T tr(Context c) {
         String lang = new Store(c).lang();
         synchronized (DICTS) {
@@ -81,7 +80,7 @@ public final class Notifier implements Checker.Alerts {
             if (importance >= 4) cls.getMethod("enableVibration", boolean.class).invoke(ch, true);
             NotificationManager.class.getMethod("createNotificationChannel", cls).invoke(nm, ch);
         } catch (Throwable t) {
-            L.i("канал уведомлений " + id + ": " + t);
+            L.i("notification channel " + id + ": " + t);
         }
     }
 
@@ -90,7 +89,7 @@ public final class Notifier implements Checker.Alerts {
             try {
                 return Notification.Builder.class.getConstructor(Context.class, String.class).newInstance(ctx, channel);
             } catch (Throwable t) {
-                L.i("конструктор уведомления: " + t);
+                L.i("notification builder: " + t);
             }
         }
         return new Notification.Builder(ctx);
@@ -100,7 +99,7 @@ public final class Notifier implements Checker.Alerts {
         Intent i = new Intent(ctx, MainActivity.class);
         i.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         if (node != null && node.length() > 0) i.putExtra("node", node);
-        i.setAction("open-" + req); // разные действия, чтобы система не склеила намерения разных уведомлений
+        i.setAction("open-" + req); // distinct actions so the system does not merge intents of different notifications
         return PendingIntent.getActivity(ctx, req, i, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
     }
 
@@ -121,7 +120,7 @@ public final class Notifier implements Checker.Alerts {
         String unit = act.optString("unit");
         if (unit.length() > 0 && ("svc_failed".equals(type) || "svc_stopped".equals(type) || "svc_flap".equals(type) || "boot_missing".equals(type))) {
             Notification.Action.Builder ab = new Notification.Action.Builder(R.drawable.ic_stat, tr.t("j.act.restart"), action("restart", id, act));
-            try {   // Android 12+: перезапуск службы только с разблокированного телефона
+            try {   // Android 12+: restarting a service only from an unlocked phone
                 Notification.Action.Builder.class.getMethod("setAuthenticationRequired", boolean.class).invoke(ab, true);
             } catch (Throwable ignored) {
             }
@@ -151,15 +150,15 @@ public final class Notifier implements Checker.Alerts {
                     .setOnlyAlertOnce(quiet)
                     .setCategory(alert ? Notification.CATEGORY_ALARM : Notification.CATEGORY_STATUS)
                     .setVisibility(Notification.VISIBILITY_PRIVATE);
-            addActions(b, id, act);   // кнопки только у тревог и предупреждений: у отбоя их нет
+            addActions(b, id, act);   // buttons only on alerts and warnings, not on all-clears
             if (Build.VERSION.SDK_INT < 26) {
                 b.setPriority(alert ? Notification.PRIORITY_HIGH : quiet ? Notification.PRIORITY_LOW : Notification.PRIORITY_DEFAULT);
                 if (alert) b.setDefaults(Notification.DEFAULT_ALL);
             }
             nm.notify(id, b.build());
-            L.i("уведомление [" + channel + "] " + title + ". " + text);
+            L.i("notification [" + channel + "] " + title + ". " + text);
         } catch (Throwable t) {
-            L.i("не удалось показать уведомление: " + t);
+            L.i("could not show notification: " + t);
         }
     }
 
@@ -184,7 +183,7 @@ public final class Notifier implements Checker.Alerts {
     @Override
     public void status(String text, boolean bad) {
         Widget.update(ctx);
-        if (!LiveService.running) return; // строка состояния есть только у постоянной службы
+        if (!LiveService.running) return; // only the persistent service has a status line
         String k = text + bad;
         if (k.equals(lastStatus)) return;
         lastStatus = k;
@@ -216,7 +215,6 @@ public final class Notifier implements Checker.Alerts {
         return true;
     }
 
-    /** HTTP для проверок: запросы к сторожу с его отпечатком и ключом. */
     public static final Checker.Http HTTP = new Checker.Http() {
         @Override
         public Net.Resp get(JSONObject hub, String path, int timeoutMs) throws Exception {

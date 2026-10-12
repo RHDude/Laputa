@@ -11,8 +11,8 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 /**
- * Режим «Сразу»: служба держит открытое соединение со сторожем. Сторож отвечает в ту же секунду,
- * как появляется событие, а при тишине раз в четыре минуты, чтобы соединение не умерло молча.
+ * Instant mode: the service keeps a connection open to the watchman. The watchman answers the moment
+ * an event appears, and every four minutes when quiet so the connection does not die silently.
  */
 public final class LiveService extends Service {
     static volatile boolean running;
@@ -36,9 +36,9 @@ public final class LiveService extends Service {
                 c.stopService(i);
             }
         } catch (Throwable t) {
-            // из фона систему не всегда можно попросить запустить службу: тогда работает проверка по расписанию
+            // the system does not always allow starting a service from the background: the scheduled check covers it
             Throwable cause = t.getCause() != null ? t.getCause() : t;
-            L.i("постоянная служба не запущена: " + cause);
+            L.i("persistent service not started: " + cause);
         }
     }
 
@@ -61,7 +61,7 @@ public final class LiveService extends Service {
         }
         startForeground(Notifier.ID_STATUS, notifier.statusNotification(text, false));
         running = true;
-        L.i("постоянная служба запущена");
+        L.i("persistent service started");
         final PowerManager.WakeLock wl = ((PowerManager) getSystemService(POWER_SERVICE)).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "laputa:event");
         wl.setReferenceCounted(false);
         final Checker.Http http = new Checker.Http() {
@@ -69,7 +69,7 @@ public final class LiveService extends Service {
             public Net.Resp get(JSONObject hub, String path, int timeoutMs) throws Exception {
                 Net.Resp r = Notifier.HTTP.get(hub, path, timeoutMs);
                 try {
-                    wl.acquire(15000); // ответ пришёл: не даём телефону уснуть, пока показываем уведомление
+                    wl.acquire(15000); // got an answer: keep the phone awake while showing the notification
                 } catch (Throwable ignored) {
                 }
                 return r;
@@ -89,7 +89,7 @@ public final class LiveService extends Service {
                         lastOk = System.currentTimeMillis();
                     } else {
                         fails++;
-                        if (fails == 1 || fails % 20 == 0) L.i("сторожа не отвечают, попытка " + fails);
+                        if (fails == 1 || fails % 20 == 0) L.i("watchmen not answering, attempt " + fails);
                         try {
                             Thread.sleep(Math.min(60000L, 5000L * fails));
                         } catch (InterruptedException e) {
@@ -115,7 +115,7 @@ public final class LiveService extends Service {
         stop = true;
         running = false;
         if (thread != null) thread.interrupt();
-        L.i("постоянная служба остановлена");
+        L.i("persistent service stopped");
         super.onDestroy();
     }
 }

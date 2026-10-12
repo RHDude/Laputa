@@ -9,7 +9,7 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
 
-/** Короткий журнал приложения в файле: виден в настройках, помогает разобраться, почему не пришла тревога. */
+/** Short app log in a file: shown in the settings, helps find out why an alert did not arrive. */
 public final class L {
     private static final int MAX = 48 * 1024;
     private static File file;

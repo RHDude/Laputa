@@ -1,26 +1,24 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Laputa: агент и сторож для личной панели серверов.
+"""Laputa: agent and watchman (hub) for a personal server panel.
 
-Один файл, только стандартная библиотека Python 3.7+. Работает на любом Linux:
-метрики берутся из /proc, службы видны и управляются там, где есть systemd
-(Debian, Ubuntu, RHEL и его родня, Fedora, Arch, openSUSE), контейнеры там, где есть Docker.
-На системах без systemd агент показывает метрики, контейнеры и подаёт сигнал.
+One file, Python 3.7+ standard library only. Runs on any Linux: metrics come from /proc,
+services are visible where systemd exists, containers where Docker exists.
 
-  агент   собирает метрики и состояние служб, сам ходит к сторожам (входящих портов не открывает),
-          выполняет команды панели по белому списку. Работает от root.
-  сторож  принимает сигналы агентов, решает, кто замолчал, ведёт журнал событий
-          и отвечает приложению. Работает от отдельного пользователя без прав.
+  agent   collects metrics and service states, connects out to the watchmen (no inbound ports),
+          runs whitelisted panel commands. Runs as root.
+  hub     receives agent signals, decides who went silent, keeps the event log
+          and answers the app. Runs as an unprivileged user.
 
-Команды:
-  laputa.py install-hub   --host АДРЕС [--port 8743] [--name ИМЯ] [--place МЕСТО] [--open-port]
-  laputa.py install-agent --hub КЛЮЧ [--hub КЛЮЧ2] [--name ИМЯ] [--place МЕСТО]
-  laputa.py keys          показать ключи и команду для подключения узлов
-  laputa.py rekey         выпустить новый ключ приложения (старый перестанет работать)
-  laputa.py status        что видит локальный сторож
-  laputa.py uninstall     убрать службы и настройки с этого сервера
+Commands:
+  laputa.py install-hub   --host ADDRESS [--port 8743] [--name NAME] [--place PLACE] [--open-port] [--lang en|ru]
+  laputa.py install-agent --hub KEY [--hub KEY2] [--name NAME] [--place PLACE] [--lang en|ru]
+  laputa.py keys          print the keys and the command for adding nodes
+  laputa.py rekey         issue a new app key (the old one stops working)
+  laputa.py status        what the local watchman sees, or which watchmen the agent reports to
+  laputa.py uninstall     remove the services and settings from this server
 
-Свои действия узла (кнопки в приложении) описываются в /etc/laputa/actions.ini.
+Node actions (buttons in the app) are defined in /etc/laputa/actions.ini.
 """
 
 import argparse
@@ -66,14 +64,14 @@ ACTIONS_FILE = os.path.join(ETC, 'actions.ini')
 
 
 def _pick_lang():
-    """Язык сообщений сервера (консоль, журнал): ru или en. LAPUTA_LANG, затем выбор при установке, затем локаль."""
+    """Server message language (console, journal): LAPUTA_LANG, then the install-time choice, then the locale."""
     v = os.environ.get('LAPUTA_LANG', '').lower()[:2]
     if v in ('ru', 'en'):
         return v
     for p in (AGENT_CFG, HUB_CFG):
         try:
             with open(p, encoding='utf-8') as f:
-                return 'en' if json.load(f).get('lang') == 'en' else 'ru'   # установки до 1.2 знали только русский
+                return 'en' if json.load(f).get('lang') == 'en' else 'ru'  # installs before 1.2 were Russian-only
         except (OSError, ValueError, AttributeError):
             pass
     loc = (os.environ.get('LC_ALL') or os.environ.get('LC_MESSAGES') or os.environ.get('LANG') or '').lower()[:2]
@@ -84,40 +82,39 @@ SRV_LANG = _pick_lang()
 
 
 def L(ru, en):
-    """Строка на языке сервера."""
     return en if SRV_LANG == 'en' else ru
 
 
 BOOT_ID_FILE = os.environ.get('LAPUTA_BOOT_ID', '/proc/sys/kernel/random/boot_id')
 REBOOT_FILE = os.environ.get('LAPUTA_REBOOT_FILE', '/var/run/reboot-required')
 
-_SPEED = float(os.environ.get('LAPUTA_SPEED', '1'))  # только для стенда: ускоряет все таймеры
-BEAT_EVERY = 10 / _SPEED          # с, как часто агент подаёт сигнал
-STALE_AFTER = 35 / _SPEED         # с без сигнала: «запаздывает»
-DOWN_AFTER = 75 / _SPEED          # с без сигнала: «молчит»
-PEER_FRESH = 40 / _SPEED          # с, насколько свежим должен быть взгляд второго сторожа
+_SPEED = float(os.environ.get('LAPUTA_SPEED', '1'))  # test bench only: speeds up all timers
+BEAT_EVERY = 10 / _SPEED  # s between agent signals
+STALE_AFTER = 35 / _SPEED  # s without a signal: late
+DOWN_AFTER = 75 / _SPEED  # s without a signal: silent
+PEER_FRESH = 40 / _SPEED  # s, max age of the other watchman's view
 
 
 def _envf(name, default):
-    # переопределения только для стенда; на настоящем сервере их нет
+    # test bench overrides
     return float(os.environ.get(name, default))
 
 
-BOOT_CHECK = _envf('LAPUTA_BOOT_CHECK', 180 / _SPEED)       # с после загрузки: сверка, все ли службы поднялись
-REBOOT_MUTE = 600 / _SPEED                                 # с тишины по узлу, который ушёл на перезагрузку из панели
-REBOOT_POLL = _envf('LAPUTA_REBOOT_POLL', 60 / _SPEED)      # с между проверками «опустел ли узел»
-REBOOT_HOUR = _envf('LAPUTA_REBOOT_HOUR', 3600 / _SPEED)    # сколько секунд в часе ожидания «когда опустеет»
-WARN_LEAD = _envf('LAPUTA_WARN_LEAD', 300 / _SPEED)         # с от первого предупреждения игрокам до перезагрузки
-MAINT_EVERY = 6 * 3600 / _SPEED                            # с между проверками обновлений
+BOOT_CHECK = _envf('LAPUTA_BOOT_CHECK', 180 / _SPEED)  # s after boot: check that all services came up
+REBOOT_MUTE = 600 / _SPEED  # s of silence for a node rebooted from the panel
+REBOOT_POLL = _envf('LAPUTA_REBOOT_POLL', 60 / _SPEED)  # s between "is the node empty" checks
+REBOOT_HOUR = _envf('LAPUTA_REBOOT_HOUR', 3600 / _SPEED)  # seconds per hour of "when empty" waiting
+WARN_LEAD = _envf('LAPUTA_WARN_LEAD', 300 / _SPEED)  # s from the first player warning to the reboot
+MAINT_EVERY = 6 * 3600 / _SPEED  # s between update checks
 MAINT_FIRST = _envf('LAPUTA_MAINT_FIRST', 120 / _SPEED)
-SUGGEST_EVERY = _envf('LAPUTA_SUGGEST_EVERY', 1800 / _SPEED)  # с между поисками новых служб
-CAND_AGE = _envf('LAPUTA_CAND_AGE', 3600 / _SPEED)          # служба должна проработать столько, чтобы её предложить
+SUGGEST_EVERY = _envf('LAPUTA_SUGGEST_EVERY', 1800 / _SPEED)  # s between service discovery runs
+CAND_AGE = _envf('LAPUTA_CAND_AGE', 3600 / _SPEED)  # a service must run this long to be suggested
 PROC = os.environ.get('LAPUTA_PROC', '/proc')
 BACKUP_ROOTS = os.environ.get('LAPUTA_BACKUP_ROOTS', '/opt:/srv:/var/backups:/root:/home:/backup:/backups:/mnt:/var/lib:/data').split(':')
 LOGIN_EVERY = 20 / _SPEED
-GROUP_WINDOW = 180 / _SPEED       # узлы одного места, замолчавшие в этом окне, считаются одной бедой
+GROUP_WINDOW = 180 / _SPEED  # nodes of one place going silent within this window count as one incident
 SYSTEMD_DIR = os.environ.get('LAPUTA_SYSTEMD', '/etc/systemd/system')
-# Какая система запуска служб на узле. Панель умеет systemd; на остальных работает без раздела «Службы».
+# Init system. Services need systemd; elsewhere the node works without them.
 INIT = os.environ.get('LAPUTA_INIT') or ('systemd' if os.path.isdir('/run/systemd/system') else 'none')
 NO_INIT = 'На этом узле нет systemd, поэтому службы панель здесь не видит. Метрики и тревога о молчании работают.'
 DISK_HIGH = 90.0
@@ -133,7 +130,7 @@ def log(*a):
 
 
 class Err(ValueError):
-    """Ошибка для панели: код и параметры, чтобы приложение показало её на языке пользователя, плюс русский текст."""
+    """Error for the app: a code and params so it can show the message in the user's language, plus a fallback text."""
 
     def __init__(self, code, text, **p):
         super().__init__(text)
@@ -141,7 +138,7 @@ class Err(ValueError):
         self.p = p
 
 
-# ---------------------------------------------------------------- общее
+# ---------------------------------------------------------------- common
 
 def jload(path, default=None):
     try:
@@ -219,11 +216,11 @@ class HubError(Exception):
 
 
 def hub_call(hub, method, path, body=None, timeout=15):
-    """Запрос к сторожу с проверкой отпечатка его сертификата."""
+    """Request to a watchman, checking its certificate fingerprint."""
     u = urlsplit(hub['url'])
     ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
     ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE  # доверие задаёт отпечаток ниже, а не цепочка
+    ctx.verify_mode = ssl.CERT_NONE  # trust comes from the pinned fingerprint below, not the chain
     conn = http.client.HTTPSConnection(u.hostname, u.port or 443, timeout=timeout, context=ctx)
     try:
         conn.connect()
@@ -245,7 +242,7 @@ def hub_call(hub, method, path, body=None, timeout=15):
         conn.close()
 
 
-# ---------------------------------------------------------------- метрики
+# ---------------------------------------------------------------- metrics
 
 FS_OK = {'ext2', 'ext3', 'ext4', 'xfs', 'btrfs', 'zfs', 'f2fs', 'jfs', 'reiserfs', 'bcachefs'}
 NET_SKIP = ('lo', 'veth', 'docker', 'br-', 'virbr', 'awg', 'wg', 'tun', 'tap', 'tailscale', 'dummy', 'sit', 'ip6tnl')
@@ -364,7 +361,7 @@ def os_name():
 
 
 class Sampler(threading.Thread):
-    """Раз в 5 секунд считает загрузку процессора и скорость сети."""
+    """CPU load and network rate, sampled every 5 seconds."""
 
     def __init__(self):
         super().__init__(daemon=True)
@@ -387,7 +384,7 @@ class Sampler(threading.Thread):
                 el = max(0.5, t - self._t)
                 self.net = [int(max(0, n[0] - self._n[0]) / el), int(max(0, n[1] - self._n[1]) / el)]
                 self._c, self._n, self._t = c, n, t
-            except Exception as e:  # метрики не должны ронять агент
+            except Exception as e:  # metrics must never crash the agent
                 log(L('метрики:', 'metrics:'), e)
 
 
@@ -420,7 +417,7 @@ NOISE = ('systemd-', 'dbus', 'getty@', 'serial-getty@', 'user@', 'user-runtime-d
 
 
 def unit_states(units):
-    """Состояние служб одним вызовом systemctl."""
+    """Service states in one systemctl call."""
     if not units or INIT != 'systemd':
         return {}
     rc, out = sh(['systemctl', 'show', '--no-pager', '--property=' + SHOW_PROPS, '--'] + list(units), timeout=15)
@@ -428,7 +425,7 @@ def unit_states(units):
     mono = time.monotonic()
     wall = time.time()
     blocks = [b for b in out.split('\n\n') if 'ActiveState=' in b]
-    by_order = len(blocks) == len(units)  # systemctl отвечает в порядке запроса; так переживаем псевдонимы юнитов
+    by_order = len(blocks) == len(units)  # systemctl answers in request order; this survives unit aliases
     for i, block in enumerate(blocks):
         d = {}
         for line in block.splitlines():
@@ -523,7 +520,7 @@ class Rcon:
     def command(self, cmd):
         self._send(2, 2, cmd)
         _, _, body = self._recv()
-        self.s.settimeout(0.25)  # длинные ответы приходят несколькими пакетами
+        self.s.settimeout(0.25)  # long replies arrive in several packets
         try:
             while len(body) < 60000:
                 _, _, more = self._recv()

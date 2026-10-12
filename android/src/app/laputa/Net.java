@@ -18,7 +18,7 @@ import javax.net.ssl.SSLSocketFactory;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
 
-/** HTTPS к сторожу. Доверие задаёт отпечаток его сертификата, а не центры сертификации. */
+/** HTTPS to a watchman. Trust comes from its certificate fingerprint, not from CAs. */
 public final class Net {
     public static final class Resp {
         public final int status;
@@ -34,7 +34,7 @@ public final class Net {
     private static final HostnameVerifier ANY_HOST = new HostnameVerifier() {
         @Override
         public boolean verify(String hostname, SSLSession session) {
-            return true; // имя не важно: сертификат сверяется по отпечатку
+            return true; // the host name does not matter: the certificate is checked by fingerprint
         }
     };
 

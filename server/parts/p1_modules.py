@@ -2,7 +2,7 @@
 # ---------------------------------------------------------------- Docker
 
 def parse_iso(s):
-    """'2026-10-08T12:00:00.123456789Z' -> unix-время; нулевая дата Docker -> None."""
+    """'2026-10-08T12:00:00.123456789Z' -> unix time; Docker's zero date -> None."""
     if not s or s.startswith('0001-'):
         return None
     m = re.match(r'(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)(?:\.\d+)?(Z|[+-]\d\d:?\d\d)?$', s.strip())
@@ -29,7 +29,7 @@ def docker_ports(text):
 
 
 def docker_list():
-    """Все контейнеры: {имя: {state, sub, since, restarts, ports, image}}. Без Docker пусто."""
+    """All containers: {name: {state, sub, since, restarts, ports, image}}. Empty without Docker."""
     if not shutil.which('docker'):
         return {}
     rc, out = sh(['docker', 'ps', '-a', '--no-trunc', '--format', '{{json .}}'], timeout=15)
@@ -72,7 +72,7 @@ def docker_list():
 
 
 def service_states(units):
-    """Состояние юнитов systemd и контейнеров Docker (имена вида docker:NAME) в одном словаре."""
+    """systemd units and Docker containers (named docker:NAME) in one dict."""
     sysd = [u for u in units if not u.startswith('docker:')]
     res = unit_states(sysd) if sysd else {}
     if any(u.startswith('docker:') for u in units):
@@ -93,10 +93,10 @@ def discover_units():
     return out
 
 
-# ---------------------------------------------------------------- сеть: кто слушает, кто подключён
+# ---------------------------------------------------------------- network: who listens, who is connected
 
 def unit_of_pid(pid):
-    """Юнит systemd, которому принадлежит процесс: по его cgroup."""
+    """The systemd unit a process belongs to, from its cgroup."""
     try:
         with open('%s/%d/cgroup' % (PROC, pid)) as f:
             text = f.read()
@@ -107,7 +107,7 @@ def unit_of_pid(pid):
 
 
 def listen_map():
-    """{юнит: [порты]} для сокетов, которые слушают процессы служб. Нужен ss (iproute2)."""
+    """{unit: [ports]} for sockets that service processes listen on. Needs ss (iproute2)."""
     if not shutil.which('ss'):
         return {}
     rc, out = sh(['ss', '-Hltnup'], timeout=10)
@@ -130,7 +130,7 @@ def listen_map():
 
 
 def established_counts():
-    """{локальный порт: число установленных TCP-соединений с внешних адресов}."""
+    """{local port: number of established TCP connections from outside}."""
     if not shutil.which('ss'):
         return {}
     rc, out = sh(['ss', '-Htn', 'state', 'established'], timeout=10)
@@ -154,7 +154,7 @@ def established_counts():
 
 
 def tunnel_peers(window=180):
-    """Активные пиры AmneziaWG и WireGuard: свежее рукопожатие за последние 3 минуты."""
+    """Active AmneziaWG and WireGuard peers: a handshake within the last 3 minutes."""
     res = {}
     now = time.time()
     for tool in ('awg', 'wg'):
@@ -170,14 +170,14 @@ def tunnel_peers(window=180):
     return [{'iface': k, 'n': v} for k, v in sorted(res.items())]
 
 
-# ---------------------------------------------------------------- игровая консоль (RCON)
+# ---------------------------------------------------------------- game console (RCON)
 
 GAME_TYPES = ('minecraft', 'rcon')
 LIST_RE = re.compile(r'There are (\d+) of a max(?:imum)? of (\d+) players online:?\s*(.*)', re.S)
 
 
 def rcon_run(cfg, commands):
-    """Выполнить несколько команд за одно подключение. Возвращает ответы по порядку."""
+    """Run several commands over one connection. Returns the replies in order."""
     try:
         r = Rcon(cfg['host'], cfg['port'], cfg.get('password', ''))
     except RconError as e:
@@ -215,7 +215,7 @@ def game_probe(cfg):
     return info
 
 
-# ---------------------------------------------------------------- бэкапы
+# ---------------------------------------------------------------- backups
 
 ARCHIVE_RE = re.compile(r'\.(tar|tgz|gz|zst|xz|bz2|zip|7z|rar|sql|dump|bak|img|qcow2|borg)$', re.I)
 
@@ -248,7 +248,7 @@ def backup_info(path, label=''):
 
 
 def backup_suggest(known, budget=2.5):
-    """Папки, похожие на бэкапы, и подсказки из таймеров и cron."""
+    """Backup-like folders, plus hints from timers and cron."""
     t0 = time.time()
     roots = BACKUP_ROOTS
     seen, found = 0, []
@@ -293,7 +293,7 @@ def backup_suggest(known, budget=2.5):
     return {'dirs': found[:12], 'hints': hints[:12]}
 
 
-# ---------------------------------------------------------------- действия узла
+# ---------------------------------------------------------------- node actions
 
 ACTIONS_EXAMPLE_RU = """# Действия узла: кнопки в приложении Laputa. Каждый раздел в квадратных скобках — одна кнопка.
 # Добавлять действия можно только здесь, на самом сервере: приложение их показывает и запускает, но не создаёт.
@@ -362,15 +362,15 @@ def run_action(a):
     return rc, out[-16000:]
 
 
-# ---------------------------------------------------------------- обслуживание: обновления и перезагрузка
+# ---------------------------------------------------------------- maintenance: updates and reboot
 
 def _ver_key(v):
-    # 6.1.0-25-amd64 -> [6, 1, 0, 25, 64]: номер сборки ядра Debian и Ubuntu тоже идёт в сравнение
+    # 6.1.0-25-amd64 -> [6, 1, 0, 25, 64]: the Debian/Ubuntu build number counts too
     return [int(x) for x in re.findall(r'\d+', v)]
 
 
 def kernel_reboot_needed():
-    """Установлено ядро новее работающего: нужна перезагрузка. Работает на любом дистрибутиве."""
+    """A newer kernel than the running one is installed: reboot needed. Works on any distro."""
     running = _ver_key(os.uname().release)
     try:
         mods = [m for m in os.listdir('/lib/modules') if re.match(r'\d', m)]
@@ -436,13 +436,13 @@ def maint_check():
     return res
 
 
-# ---------------------------------------------------------------- входы по SSH
+# ---------------------------------------------------------------- SSH logins
 
 ACCEPT_RE = re.compile(r'Accepted (\S+) for (\S+) from (\S+) port (\d+)')
 
 
 class LoginWatch:
-    """Следит за успешными входами по SSH: журнал systemd или файлы журналов там, где его нет."""
+    """Watches successful SSH logins: the systemd journal, or log files where there is none."""
 
     def __init__(self):
         self.since = time.time()
@@ -472,7 +472,7 @@ class LoginWatch:
                 st = os.stat(path)
             except OSError:
                 continue
-            ino, off = self.files.get(path, (st.st_ino, st.st_size))   # при первом взгляде историю не читаем
+            ino, off = self.files.get(path, (st.st_ino, st.st_size))  # the first look skips history
             if ino != st.st_ino or off > st.st_size:
                 off = 0
             try:
@@ -492,7 +492,7 @@ class LoginWatch:
         self.items.append({'ts': round(ts, 3), 'method': m.group(1), 'user': m.group(2)[:32], 'ip': m.group(3)[:64]})
 
 
-# ---------------------------------------------------------------- проверка соседа снаружи
+# ---------------------------------------------------------------- checking a neighbour from outside
 
 def probe(ip, port):
     try:
@@ -539,7 +539,7 @@ def probe(ip, port):
     return res
 
 
-# ---------------------------------------------------------------- разбор прошлой загрузки
+# ---------------------------------------------------------------- previous boot analysis
 
 def read_boot_id():
     try:
@@ -550,7 +550,7 @@ def read_boot_id():
 
 
 def postmortem():
-    """Чем закончилась прошлая загрузка: по её журналу, если он сохраняется между загрузками."""
+    """How the previous boot ended, from its journal if it is kept across boots."""
     if not shutil.which('journalctl'):
         return {'cause': 'unknown', 'why': 'nojournal', 'lines': []}
     rc, out = sh(['journalctl', '-b', '-1', '-n', '400', '-o', 'short-unix', '--no-pager', '-q'], timeout=30)
@@ -567,6 +567,6 @@ def postmortem():
     tail = []
     for l in lines[-14:]:
         ts, _, rest = l.partition(' ')
-        rest = re.sub(r'^\S+ ', '', rest, count=1)   # имя хоста
+        rest = re.sub(r'^\S+ ', '', rest, count=1)
         tail.append([int(float(ts)), rest[:240]])
     return {'cause': cause, 'oom': bool(oom), 'last_ts': int(last_ts), 'lines': tail}

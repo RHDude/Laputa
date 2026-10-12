@@ -1,4 +1,4 @@
-// Тестовые данные для макета и проверки интерфейса без сервера. В боевую сборку не попадают.
+// Mock data for trying the UI without a server. Not part of the production build.
 
 const GB = 1024 * 1024 * 1024;
 const MB = 1024 * 1024;
@@ -121,7 +121,7 @@ export function mockState(variant) {
     nodes[4].services.push(...extra);
   }
   if (new URLSearchParams(location.search).has('boot')) Object.assign(nodes[2], { rebooting: now - 25, muted_until: now + 575 });
-  // ?n=12: размножить узлы, чтобы посмотреть, как небо держит много островов
+  // ?n=12: multiply nodes to see how the sky copes with many islands
   const want = +new URLSearchParams(location.search).get('n') || 0;
   const places = ['Франкфурт', 'Амстердам', 'Хельсинки', 'дом'];
   for (let i = nodes.length; i < want; i++) {

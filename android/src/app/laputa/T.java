@@ -6,8 +6,8 @@ import org.json.JSONObject;
 import java.util.Calendar;
 
 /**
- * Тексты на языке пользователя. Словари общие с интерфейсом (assets/ui/i18n/*.json),
- * правила сборки событий повторяют ui/src/i18n.js. Без Android: годится и для проверок на JVM.
+ * Texts in the user's language. Dictionaries are shared with the UI (assets/ui/i18n/*.json),
+ * event text rules mirror ui/src/i18n.js. No Android here, so it also runs in JVM tests.
  */
 public final class T {
     public static final String[] LANGS = {"ru", "en", "uk", "de", "es", "zh"};
@@ -24,7 +24,7 @@ public final class T {
         this.ru = ru == null ? new JSONObject() : ru;
     }
 
-    /** Язык из настроек приложения или системы; неизвестный — английский. */
+    /** Language from the app settings or the system; unknown means English. */
     public static String pick(String pref, String sys) {
         if (pref != null) for (String l : LANGS) if (l.equals(pref)) return l;
         String s = sys == null ? "" : sys.toLowerCase();
@@ -192,7 +192,7 @@ public final class T {
         return q;
     }
 
-    /** Заголовок и текст события или беды; без шаблона — русский текст сторожа. */
+    /** Event title and text; without a template, the watchman's fallback text. */
     public String[] ev(JSONObject e) {
         String type = e.optString("type", "");
         String base = "ev." + type + ".";
@@ -205,7 +205,7 @@ public final class T {
         return new String[]{t(tk, q), has(xk) ? t(xk, q) : ""};
     }
 
-    /** Ошибка из ответа агента или сторожа: {code, p, error}. */
+    /** Error from an agent or watchman reply: {code, p, error}. */
     public String err(JSONObject r) {
         String code = r.optString("code", "");
         if (code.length() > 0 && has("err." + code)) {
@@ -216,7 +216,7 @@ public final class T {
         return e.length() > 0 ? e : t("err.generic");
     }
 
-    /** Текст Java-исключения: ключи j.net.* заменяются переводом. */
+    /** Java exception text: j.net.* keys are translated. */
     public String exc(Throwable x) {
         String m = x.getMessage() == null ? x.toString() : x.getMessage();
         java.util.regex.Matcher mt = java.util.regex.Pattern.compile("j\\.net\\.[a-z]+").matcher(m);

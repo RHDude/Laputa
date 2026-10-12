@@ -7,7 +7,7 @@ import android.content.Intent;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-/** Кнопки в уведомлении: «Перезапустить» службу и «Заглушить на час» узел. Команда идёт через первого ответившего сторожа. */
+/** Notification buttons: Restart a service, Mute a node for an hour. Sent through the first watchman that answers. */
 public final class ActionReceiver extends BroadcastReceiver {
     @Override
     public void onReceive(Context context, Intent intent) {
@@ -28,7 +28,7 @@ public final class ActionReceiver extends BroadcastReceiver {
                 try {
                     work(c, what, nid, act);
                 } catch (Throwable t) {
-                    L.i("действие из уведомления: " + t);
+                    L.i("notification action: " + t);
                 } finally {
                     pr.finish();
                 }
@@ -66,12 +66,12 @@ public final class ActionReceiver extends BroadcastReceiver {
                 }
                 JSONObject res = new JSONObject(r.body);
                 if (res.optBoolean("ok")) {
-                    L.i((restart ? "перезапуск " + unit : "заглушен узел " + node) + " из уведомления");
+                    L.i((restart ? "restart " + unit : "muted node " + node) + " from notification");
                     n.show(nid, Checker.CH_INFO, restart ? tr.t("j.act.restarted", "label", label) : tr.t("j.act.muted", "name", name), restart ? name : "", node, true, null);
                     return;
                 }
                 error = tr.err(res);
-                if (!"hub_no_node".equals(res.optString("code"))) break;   // ответ узла, второй сторож скажет то же
+                if (!"hub_no_node".equals(res.optString("code"))) break;   // the node's answer; the other watchman would say the same
             } catch (Exception e) {
                 error = tr.exc(e);
             }

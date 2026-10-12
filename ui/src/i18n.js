@@ -1,4 +1,4 @@
-// Языки интерфейса. Словари лежат в ui/i18n/*.json; их же читает нативная часть для уведомлений.
+// UI languages. Dictionaries live in ui/i18n/*.json; the native side reads them for notifications.
 import ru from '../i18n/ru.json';
 import en from '../i18n/en.json';
 import uk from '../i18n/uk.json';
@@ -22,11 +22,12 @@ export function pickLang(pref, sys) {
 }
 
 export function setLang(l) {
-  if (!DICTS[l] || l === lang) return;
+  if (!DICTS[l]) return;
+  if (typeof document !== 'undefined' && document.documentElement.lang !== l) document.documentElement.lang = l;
+  if (l === lang) return;
   lang = l;
   D = DICTS[l];
   PR = new Intl.PluralRules(l);
-  if (typeof document !== 'undefined') document.documentElement.lang = l;
 }
 
 export function getLang() { return lang; }
@@ -40,7 +41,7 @@ function raw(key) {
 
 export function has(key) { return raw(key) !== undefined; }
 
-// t('h.down1', {name: 'X'}). Значение-объект — формы множественного числа, выбор по p.n.
+// t('h.down1', {name: 'X'}). An object value holds plural forms, picked by p.n.
 export function t(key, p) {
   let v = raw(key);
   if (v === undefined) return key;
@@ -57,7 +58,7 @@ export function num(x, digits) {
   return NF[k].format(x);
 }
 
-// Длительность: «40 с», «12 мин», «3 ч 5 мин», «12 д 4 ч».
+// Duration: '40 s', '12 min', '3 h 5 min', '12 d 4 h'.
 export function dur(sec, short) {
   sec = Math.max(0, Math.floor(sec));
   const j = t('u.join');
@@ -118,7 +119,7 @@ export function list(items) {
   return items.join(t('u.comma'));
 }
 
-// ---------- события: текст собирается из типа и параметров, русский текст сторожа — запасной ----------
+// ---------- events: text built from type and params, the watchman's text is a fallback ----------
 
 const VARIANT = {
   node_down: (p) => (p.group ? 'group' : p.both ? 'both' : p.gone != null ? 'gone' : ''),
@@ -147,10 +148,10 @@ export function evText(e) {
   return { title: t(k('t'), q), text: has(k('x')) ? t(k('x'), q) : '' };
 }
 
-// ---------- ошибки агента и сторожа ----------
+// ---------- agent and watchman errors ----------
 
 export function errText(r) {
-  const old = r && !r.code && /не знает команду (\S+)/.exec(r.error || '');   // агент 1.0
+  const old = r && !r.code && /не знает команду (\S+)/.exec(r.error || '');   // agent 1.0
   if (old) return t('err.unknown_cmd', { cmd: old[1] });
   if (r && r.code && has('err.' + r.code)) {
     const p = { ...(r.p || {}) };

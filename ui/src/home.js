@@ -4,7 +4,7 @@ import { Icon, Island } from './icons.js';
 import { t, dur, ago, list } from './i18n.js';
 import { pct, round } from './fmt.js';
 
-// ---------- общая оценка состояния ----------
+// ---------- overall state ----------
 
 export function diskMax(n) {
   let m = 0;
@@ -14,7 +14,7 @@ export function diskMax(n) {
 
 export function isMuted(n, now) { return !!(n.muted_until && n.muted_until > now); }
 
-// Перезагрузка из панели: сторож узнаёт о ней от агента, а до того приложение помнит, что команду отправило.
+// Reboot from the panel: the watchman learns about it from the agent; until then the app remembers sending it.
 const sentReboot = {};
 export function markReboot(id) { sentReboot[id] = Date.now() / 1000; }
 export function rebootAt(n, now) {
@@ -23,7 +23,7 @@ export function rebootAt(n, now) {
   return t && now - t < 60 && n.status !== 'down' ? t : 0;
 }
 
-// Службы узла, которые сейчас беда: упали или не поднялись после загрузки.
+// The node's services in trouble: failed or not up after boot.
 export function badServices(n) {
   if (n.status === 'down' || n.rebooting) return [];
   const bm = n.boot_missing || [];
@@ -87,7 +87,7 @@ export function health(snap, link, now) {
   return { sev: 'ok', title: n === 1 ? t('h.ok1') : t('h.okN', { n }), sub: '' };
 }
 
-// ---------- небо ----------
+// ---------- sky ----------
 
 function isleStatus(n, now) {
   if (rebootAt(n, now)) return 'reboot';
@@ -96,7 +96,7 @@ function isleStatus(n, now) {
   return n.status;
 }
 
-// До 8 узлов — один ряд, до 16 — два яруса, дальше — по острову на место, беды отдельно.
+// Up to 8 nodes: one row; up to 16: two tiers; more: one island per place, troubled nodes separate.
 export function skyLayout(nodes, now) {
   let items = nodes.map((n) => ({ key: n.id, node: n }));
   if (nodes.length > 16) {
@@ -150,7 +150,7 @@ function Sky({ ctx, h }) {
   </header>`;
 }
 
-// ---------- разрешения, без которых тревоги не дойдут ----------
+// ---------- permissions alerts depend on ----------
 
 export function Needs({ ctx }) {
   const { env, setEnv } = ctx;
@@ -165,7 +165,7 @@ export function Needs({ ctx }) {
   </div>`;
 }
 
-// ---------- узлы ----------
+// ---------- nodes ----------
 
 export function Meter({ label, value, text, hot = 85, crit = 93 }) {
   const lvl = value >= crit ? 'crit' : value >= hot ? 'warn' : 'ok';

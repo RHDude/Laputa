@@ -8,7 +8,7 @@ import org.json.JSONObject;
 import java.io.File;
 import java.nio.file.Files;
 
-/** Один проход настоящей логики тревог на обычной JVM. Уведомления печатаются строками. */
+/** One pass of the real alert logic on a plain JVM. Notifications are printed as lines. */
 public class CheckerCli {
     public static void main(String[] a) throws Exception {
         final File kvFile = new File(a[0]);
@@ -44,7 +44,7 @@ public class CheckerCli {
                 return Net.request(hub.optString("url") + path, hub.optString("pin"), hub.optString("token"), "GET", null, timeoutMs);
             }
         };
-        if (System.getenv("LAPUTA_EV") != null) {   // сверка текстов событий с интерфейсом
+        if (System.getenv("LAPUTA_EV") != null) {   // compare event texts with the UI
             JSONArray evs = new JSONArray(new String(Files.readAllBytes(new File(System.getenv("LAPUTA_EV")).toPath()), "UTF-8"));
             for (int i = 0; i < evs.length(); i++) {
                 String[] x = tr.ev(evs.getJSONObject(i));
@@ -52,7 +52,7 @@ public class CheckerCli {
             }
             return;
         }
-        if (System.getenv("LAPUTA_STATUS_ONLY") != null) {   // проверка текста строки состояния без сети
+        if (System.getenv("LAPUTA_STATUS_ONLY") != null) {   // status line text check without network
             System.out.println("SUMMARY|" + Checker.summaryText(tr, new JSONObject(System.getenv("LAPUTA_STATUS_ONLY"))));
             return;
         }

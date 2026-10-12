@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Стенд Laputa: два сторожа и пять агентов на одной машине, подставной systemd и RCON.
+"""Laputa test bench: two watchmen and five agents on one machine, stubbed systemd and RCON.
 
-  run.py test    прогнать сценарий с проверками
-  run.py serve   поднять стенд и оставить работать (для проверки интерфейса)
+  run.py test    run the scenario with checks
+  run.py serve   start the bench and keep it running (for UI tests)
 """
 import json, os, shutil, socket, struct, subprocess, sys, threading, time
 
@@ -122,7 +122,7 @@ def set_unit(key, unit, **kw):
 
 
 def fake_rcon(port, password):
-    """Минимальный RCON-сервер Minecraft."""
+    """Minimal Minecraft RCON server."""
     srv = socket.socket()
     srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     srv.bind(('127.0.0.1', port))

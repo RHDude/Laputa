@@ -29,7 +29,7 @@ import java.io.InputStream;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-/** Единственный экран: WebView с интерфейсом из assets/ui и мост между ним и нативной частью. */
+/** The only screen: a WebView with the UI from assets/ui and a bridge to the native side. */
 public final class MainActivity extends Activity {
     private static final String ORIGIN = "https://appassets.laputa/";
     private WebView web;
@@ -49,7 +49,7 @@ public final class MainActivity extends Activity {
         web = new WebView(this);
         web.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         web.setBackgroundColor(0xFF0D1430);
-        // Цвета прошлого запуска: окно и полосы сразу в выбранной теме, без вспышки тёмной.
+        // Last run's colours: window and bars start in the chosen theme, no dark flash.
         try {
             String last = store.get("chrome");
             if (last != null && last.length() > 0) {
@@ -135,7 +135,7 @@ public final class MainActivity extends Activity {
     @Override
     public void onRequestPermissionsResult(int code, String[] perms, int[] results) {
         if (code == 33 && results.length > 0 && results[0] != 0 && !shouldShowRequestPermissionRationale(perms[0])) {
-            openNotificationSettings(); // система больше не спрашивает: ведём в настройки приложения
+            openNotificationSettings(); // the system no longer asks: open the app settings
         }
         emit("{\"type\":\"env\",\"env\":" + env() + "}");
     }
@@ -160,7 +160,7 @@ public final class MainActivity extends Activity {
         return o.toString();
     }
 
-    /** Палитра Material You из обоев (Android 12+): системные цвета system_accent1_500 и соседи. Раньше их нет. */
+    /** Material You palette from the wallpaper (Android 12+): system_accent1_500 and friends. Not available earlier. */
     private JSONObject monet() {
         if (Build.VERSION.SDK_INT < 31) return null;
         try {
@@ -176,7 +176,7 @@ public final class MainActivity extends Activity {
             }
             return m.optJSONObject("accent1").length() > 0 ? m : null;
         } catch (Throwable t) {
-            L.i("палитра Monet: " + t);
+            L.i("Monet palette: " + t);
             return null;
         }
     }
@@ -256,7 +256,7 @@ public final class MainActivity extends Activity {
         if ("store.set".equals(method)) {
             String was = store.lang();
             store.setCfg(a);
-            if (!was.equals(store.lang())) {   // язык сменился: каналы уведомлений и виджет на новом языке
+            if (!was.equals(store.lang())) {   // language changed: rebuild notification channels and the widget
                 new Notifier(this);
                 Widget.update(this);
             }
@@ -379,7 +379,7 @@ public final class MainActivity extends Activity {
         public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
             String url = request.getUrl().toString();
             if (!url.startsWith(ORIGIN)) {
-                // интерфейс живёт только в самом приложении: наружу WebView не ходит, сеть идёт через мост
+                // the UI lives inside the app: the WebView never goes out, network goes through the bridge
                 return new WebResourceResponse("text/plain", "utf-8", new java.io.ByteArrayInputStream(new byte[0]));
             }
             String path = request.getUrl().getPath();
@@ -395,7 +395,7 @@ public final class MainActivity extends Activity {
 
         @Override
         public boolean shouldOverrideUrlLoading(WebView view, String url) {
-            return !url.startsWith(ORIGIN); // никуда не уходим из интерфейса
+            return !url.startsWith(ORIGIN); // never navigate away from the UI
         }
     }
 }

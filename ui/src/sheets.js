@@ -28,7 +28,7 @@ function Impact({ imp }) {
   return html`<p class=${'imp' + (imp.total ? ' warn-t' : ' dim')}>${impactText(imp)}</p>`;
 }
 
-// ---------- служба ----------
+// ---------- service ----------
 
 export function ServiceSheet({ ctx, nodeId, unit, close }) {
   const { now, cmd, say, setSheet } = ctx;
@@ -49,7 +49,7 @@ export function ServiceSheet({ ctx, nodeId, unit, close }) {
     if (s.state !== 'active') { act('svc.restart', t('svc.restarting'), t('svc.restarted', { label: s.label })); return; }
     setBusy(t('imp.checking.short'));
     let imp = null;
-    try { imp = (await cmd(node.id, 'impact', { unit: s.unit }, 75000)).impact; } catch (e) { /* агент 1.0 не умеет, перезапускаем как раньше */ }
+    try { imp = (await cmd(node.id, 'impact', { unit: s.unit }, 75000)).impact; } catch (e) { /* agent 1.0 can't, restart as before */ }
     setBusy('');
     if (imp && imp.total > 0) {
       setSheet({ type: 'confirm', title: t('svc.restart.q', { label: s.label }), text: impactText(imp), action: t('svc.restart'), danger: true, back,
@@ -120,7 +120,7 @@ export function ServiceSheet({ ctx, nodeId, unit, close }) {
     </div>`;
 }
 
-// ---------- добавление служб: подбор с причинами ----------
+// ---------- adding services: suggestions with reasons ----------
 
 export function AddServiceSheet({ ctx, nodeId, close }) {
   const { cmd, say } = ctx;
@@ -181,7 +181,7 @@ export function AddServiceSheet({ ctx, nodeId, close }) {
     ${units && html`<button class="btn primary" disabled=${busy || !sel.size} onClick=${add}>${busy ? t('adding') : sel.size ? t('pick.add', { n: sel.size }) : t('pick.choose')}</button>`}`;
 }
 
-// ---------- игровая консоль ----------
+// ---------- game console ----------
 
 export function GameSetupSheet({ ctx, nodeId, close }) {
   const { cmd, say } = ctx;
@@ -238,7 +238,7 @@ export function QuickAddSheet({ ctx, nodeId, close }) {
     </form>`;
 }
 
-// ---------- перезагрузка ----------
+// ---------- reboot ----------
 
 export function RebootSheet({ ctx, nodeId, close }) {
   const { cmd, say } = ctx;
@@ -284,7 +284,7 @@ export function RebootSheet({ ctx, nodeId, close }) {
     </div>`;
 }
 
-// ---------- бэкапы ----------
+// ---------- backups ----------
 
 export function BackupAddSheet({ ctx, nodeId, close }) {
   const { cmd, say, now } = ctx;
@@ -347,7 +347,7 @@ export function BackupSheet({ ctx, nodeId, path, close }) {
     <button class="btn danger" onClick=${remove}><${Icon} name="trash" />${t('bk.remove')}</button>`;
 }
 
-// ---------- подтверждение ----------
+// ---------- confirmation ----------
 
 export function ConfirmSheet({ ctx, title, text, code, action, danger, run, close, impact, keepOpen }) {
   const [busy, setBusy] = useState(false);
@@ -368,7 +368,7 @@ export function ConfirmSheet({ ctx, title, text, code, action, danger, run, clos
     </div>`;
 }
 
-// ---------- новый сторож ----------
+// ---------- new watchman ----------
 
 export function AddHubSheet({ ctx, close }) {
   const { cfg, saveCfg, say } = ctx;
@@ -398,7 +398,7 @@ export function AddHubSheet({ ctx, close }) {
     </div>`;
 }
 
-// ---------- журнал и любой длинный текст ----------
+// ---------- log and any long text ----------
 
 export function LogSheet({ title, text, load, close }) {
   const [body, setBody] = useState(text != null ? text : null);
@@ -415,7 +415,7 @@ export function LogSheet({ title, text, load, close }) {
     ${body != null && html`<button class="btn" onClick=${() => native('clipboard.write', { text: body })}><${Icon} name="paste" />${t('copy')}</button>`}`;
 }
 
-// ---------- выбор одного из вариантов ----------
+// ---------- single choice ----------
 
 export function ChoiceSheet({ title, options, value, onPick, close }) {
   return html`<${Head} title=${title} close=${close} />

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Стенд для возможностей 1.1: Docker, автовыбор служб, действия, игровая консоль, бэкапы,
-«кого заденет», перезагрузка по условию, сверка после загрузки, разбор падения, проверка с соседей,
-общая беда, обслуживание, входы по SSH, коды ошибок."""
+"""Bench for the 1.1+ features: Docker, service discovery, actions, game console, backups,
+"who is affected", conditional reboot, post-boot check, crash analysis, neighbour checks,
+place-wide alert, maintenance, SSH logins, error codes, server language."""
 import json, os, socket, struct, subprocess, sys, threading, time
 
 os.environ.setdefault('BENCH_DIR', '/tmp/laputa-v11')
@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import run as B  # noqa: E402
 from run import check, api, cmd, node, events, wait_for  # noqa: E402
 
-TARGET = '192.0.2.10'   # адрес сторожа для узлов с той же машины: проверка с соседей стучится сюда
+TARGET = '192.0.2.10'  # watchman address for nodes on the same machine: the neighbour check probes it
 RCON_PORT = 25611
 RCON = {'players': ['Alpha', 'Beta'], 'log': []}
 EXTRA = {}
@@ -133,7 +133,7 @@ def build():
     wt(d + '/reboot-required', '*** System restart required ***\n')
     wt(d + '/reboot-required.pkgs', 'linux-image-6.1.0-27-amd64\nlibssl3\n')
     wt(d + '/ssh.log', '')
-    # бэкапы: раз в 10 минут, последний 35 минут назад — опаздывают
+    # backups every 10 minutes, the last one 35 minutes ago: late
     bk = d + '/srv/game/backups'
     os.makedirs(bk)
     for i in range(6):
@@ -151,7 +151,7 @@ def build():
     os.makedirs(d + '/srv/site/htdocs')
     wt(d + '/actions.ini', '[Обновить бота]\ncommand = echo updated; exit 0\nservice = mybot.service\nconfirm = no ; без вопросов\n\n'
                            '[Сломанное]\ncommand = echo fail >&2; exit 3\n\n[Пустое]\nservice = cron.service\n')
-    # gw: настройки 1.0 с блоком mc
+    # gw: 1.0 settings with an mc block
     g = json.load(open(adir('gw') + '/agent.json'))
     g['mc'] = {'host': '127.0.0.1', 'port': RCON_PORT, 'password': 'secret', 'backups': adir('gw') + '/mcb'}
     os.makedirs(adir('gw') + '/mcb')
@@ -185,7 +185,7 @@ def scenario():
     g = wait_for(lambda: (lambda x: x if x and x['type'] == 'rcon' else None)(node(A, 'gw')['game']), 10)
     check('общий RCON: в сети, без разбора игроков, старый пароль сохранён', g and g['online'] and g['players'] is None and node(A, 'gw')['mc'] is None, g)
 
-    # три узла замолкают сейчас, проверим их позже
+    # three nodes go silent now, checked later
     pm_state = adir('pmnode') + '/agent-state.json'
     check('добавление служб на узле для сверки', cmd(A, 'pmnode', 'svc.add_many', items=[{'unit': 'app.service', 'label': 'App'}, {'unit': 'db.service', 'label': 'База'}]).get('added') == 2)
     check('агент помнит, какие службы работали', wait_for(lambda: json.load(open(pm_state))['active'] == ['app.service', 'db.service'], 15))

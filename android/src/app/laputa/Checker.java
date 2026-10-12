@@ -4,8 +4,8 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 /**
- * Решает, о чём сообщить владельцу. Не знает про Android: работает через три интерфейса,
- * поэтому одна и та же логика служит фоновой задаче, постоянной службе и проверкам на обычной JVM.
+ * Decides what to tell the owner. Knows nothing about Android: works through three interfaces,
+ * so the same logic serves the background job, the persistent service and JVM tests.
  */
 public final class Checker {
     public interface Http {
@@ -13,14 +13,13 @@ public final class Checker {
     }
 
     public interface Alerts {
-        /** quiet: обновить без звука (отбой заменяет тревогу с тем же id). act: что можно сделать прямо из уведомления. */
+        /** quiet: update silently (an all-clear replaces the alert with the same id). act: what can be done from the notification. */
         void show(int id, String channel, String title, String text, String node, boolean quiet, JSONObject act);
 
         void status(String text, boolean bad);
 
         boolean online();
 
-        /** Словарь на языке пользователя. */
         T tr();
     }
 
@@ -52,7 +51,7 @@ public final class Checker {
         return 1000 + h % 2000000000;
     }
 
-    /** Вид события, как в ui/src/fmt.js: по нему пользователь решает, что присылать. */
+    /** Event kind, same as in ui/src/fmt.js: the user picks what to be notified about by it. */
     static String kindOf(String type) {
         if (type == null) return "other";
         if (type.startsWith("node_") || type.equals("group_down") || type.equals("link_lost") || type.startsWith("hub_")) return "down";
@@ -64,7 +63,7 @@ public final class Checker {
         return "other";
     }
 
-    /** sound, quiet или off: своя настройка узла, иначе общая, иначе со звуком. */
+    /** sound, quiet or off: the node's own setting, else the general one, else sound. */
     String level(JSONObject e) {
         String kind = kindOf(e.optString("type"));
         try {
@@ -109,7 +108,6 @@ public final class Checker {
         return total == 1 ? tr.t("j.st.ok1") : tr.t("j.st.okN", "n", total);
     }
 
-    /** Что предложить в уведомлении: заглушить узел, перезапустить службу. */
     static JSONObject act(JSONObject e) {
         JSONObject a = new JSONObject();
         JSONObject p = e.optJSONObject("p");
@@ -128,8 +126,8 @@ public final class Checker {
     }
 
     /**
-     * Один проход по сторожам. waitSec: сколько сторожу держать соединение открытым в ожидании событий.
-     * Возвращает true, если хоть один сторож ответил.
+     * One pass over the watchmen. waitSec: how long the watchman may hold the connection waiting for events.
+     * Returns true if any watchman answered.
      */
     public boolean pass(JSONArray hubs, int waitSec) {
         if (hubs == null || hubs.length() == 0) return false;
@@ -146,7 +144,7 @@ public final class Checker {
             String url = hub.optString("url");
             boolean same = url.equals(lastUrl);
             long after = same ? st.optLong("seq", 0) : 0;
-            int wait = same ? waitSec : 0; // с новым сторожем сначала сверяемся, ждать нечего
+            int wait = same ? waitSec : 0; // a new watchman: sync first, nothing to wait for
             try {
                 Net.Resp r = http.get(hub, "/v1/events?after=" + after + "&wait=" + wait, (wait + 25) * 1000);
                 if (r.status != 200) throw new Exception(alerts.tr().t("err.hub_status", "status", r.status));
@@ -162,7 +160,7 @@ public final class Checker {
 
     private void handle(String url, JSONObject r) throws Exception {
         synchronized (LOCK) {
-            JSONObject st = load(); // перечитываем: параллельный проход мог уже обработать те же события
+            JSONObject st = load(); // re-read: a parallel pass may have handled the same events
             T tr = alerts.tr();
             long now = System.currentTimeMillis();
             boolean same = url.equals(st.optString("hub", ""));
@@ -175,8 +173,8 @@ public final class Checker {
             JSONArray probs = r.optJSONArray("problems");
             if (probs == null) probs = new JSONArray();
             if (seen >= 0 && seq >= seen) {
-                // Обычный ход: показываем новые события. Если по одному предмету их накопилось несколько
-                // (телефон был выключен), важно только последнее: тревога, которую уже сняли, не должна звенеть.
+                // Normal pass: show new events. If several piled up for one subject
+                // (the phone was off), only the last matters: an alert that is already cleared must not ring.
                 JSONArray ev = r.optJSONArray("events");
                 java.util.LinkedHashMap<Integer, JSONObject> last = new java.util.LinkedHashMap<Integer, JSONObject>();
                 for (int i = 0; ev != null && i < ev.length(); i++) {
@@ -190,14 +188,14 @@ public final class Checker {
                     JSONObject e = en.getValue();
                     String sev = e.optString("sev");
                     String lvl = level(e);
-                    if ("off".equals(lvl)) continue;   // только во вкладке «События»
+                    if ("off".equals(lvl)) continue;   // only in the Events tab
                     String[] x = tr.ev(e);
                     boolean quiet = "ok".equals(sev) || "quiet".equals(lvl);
                     alerts.show(en.getKey(), quiet && !"ok".equals(sev) ? CH_INFO : channelFor(sev), x[0], x[1], e.optString("node"), quiet, act(e));
                 }
             } else {
-                // Первый разговор с этим сторожем или переход на него с другого: историю не пересказываем,
-                // сообщаем только о бедах, которые есть сейчас и о которых мы ещё не говорили.
+                // First contact with this watchman, or switching to it: don't replay history,
+                // only report current problems we have not reported yet.
                 JSONArray known = st.optJSONArray("known");
                 for (int i = 0; i < probs.length(); i++) {
                     JSONObject p = probs.optJSONObject(i);
@@ -254,7 +252,7 @@ public final class Checker {
                     st.put("lostSince", now);
                 }
                 if (!alerts.online()) {
-                    // у телефона нет сети: это не беда сторожей, отсчёт начнём, когда сеть вернётся
+                    // the phone is offline: not the watchmen's fault, start counting once the network is back
                     st.put("lostSince", 0);
                     alerts.status(tr.t("j.offline"), false);
                 } else {

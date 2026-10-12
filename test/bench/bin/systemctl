@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Подставной systemctl для стенда: состояние юнитов лежит в файле $FAKE_UNITS.
+# Stub systemctl: unit states come from $FAKE_UNITS.
 import json, os, sys, time
 path = os.environ.get('FAKE_UNITS', '/nonexistent')
 try:

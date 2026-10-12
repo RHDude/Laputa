@@ -1,6 +1,6 @@
 import { html } from 'htm/preact';
 
-// Собственный набор линейных значков, 24×24.
+// Own set of line icons, 24x24.
 const P = {
   bot: 'M8 4.5 9.2 7M16 4.5 14.8 7M5 10.5A3.5 3.5 0 0 1 8.5 7h7A3.5 3.5 0 0 1 19 10.5v4A3.5 3.5 0 0 1 15.5 18h-7A3.5 3.5 0 0 1 5 14.5zM9.5 11.5v2M14.5 11.5v2M3 12v2M21 12v2',
   panel: 'M4 6.5A1.5 1.5 0 0 1 5.5 5h13A1.5 1.5 0 0 1 20 6.5v11a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5zM4 9.5h16M9 9.5V19M12 13h5M12 16h3',
@@ -46,7 +46,7 @@ export function Icon({ name, size = 22, cls = '' }) {
     <path d=${d} /></svg>`;
 }
 
-// Парящий остров: один на узел. Форма простая и своя: травяная шапка, скала клином, домики по числу служб.
+// Floating island, one per node: grass cap, wedge of rock, a house per service.
 export function Island({ status = 'up', towers = 2, seed = 0 }) {
   const t = Math.max(0, Math.min(3, towers));
   const houses = [];

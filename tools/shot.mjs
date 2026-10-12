@@ -1,4 +1,4 @@
-// Скриншоты интерфейса в Chromium: node shot.mjs <url> <out.png> [--light] [--full] [--click=selector]... [--wait=ms]
+// UI screenshots in Chromium: node shot.mjs <url> <out.png> [--light] [--full] [--click=selector]... [--wait=ms]
 import { chromium } from '/opt/npm-tools/node_modules/playwright/index.mjs';
 const [url, out, ...rest] = process.argv.slice(2);
 const opt = (k) => rest.find((a) => a.startsWith('--' + k));

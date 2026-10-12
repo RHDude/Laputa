@@ -1,10 +1,10 @@
-// Связь интерфейса с нативной частью и сторожами.
+// Bridge between the UI, the native shell and the watchmen.
 import { mockState, mockHistory, mockCmd } from './mock.js';
 import { t } from './i18n.js';
 
 const N = typeof window !== 'undefined' ? window.LaputaNative : null;
 const Q = new URLSearchParams(typeof location !== 'undefined' ? location.search : '');
-// __DEV__ задаёт сборка: в боевой версии макет с тестовыми данными вырезается целиком.
+// __DEV__ is set by the build: the production bundle drops the mock entirely.
 export const MOCK = __DEV__ && !N && Q.has('mock') ? (Q.get('mock') || 'ok') : null;
 const DEV_HUBS = !N && Q.get('hub')
   ? Q.getAll('hub').map((u, i) => ({ url: u, pin: '', token: Q.getAll('token')[i] || Q.get('token') || '', name: '' }))
@@ -41,7 +41,7 @@ export function native(method, args) {
   });
 }
 
-// ---------- работа без оболочки (браузер, макет, стенд) ----------
+// ---------- running without the shell (browser, mock, bench) ----------
 
 function lsGet(key, def) {
   try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : def; } catch (e) { return def; }
@@ -50,7 +50,7 @@ function lsSet(key, val) {
   try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) { /* ignore */ }
 }
 
-// Палитра «как у Monet» для проверки в браузере: тона одного оттенка по светлоте.
+// Monet-like palette for browser testing: one hue at different lightness.
 function devMonet(hue) {
   const L = { 0: 100, 10: 99, 50: 95, 100: 90, 200: 80, 300: 70, 400: 60, 500: 50, 600: 40, 700: 30, 800: 20, 900: 10, 1000: 0 };
   const hex = (h, sat, l) => {
@@ -96,7 +96,7 @@ async function devNative(method, a) {
   }
 }
 
-// ---------- сторожа ----------
+// ---------- watchmen ----------
 
 export class HubError extends Error {
   constructor(msg, status) { super(msg); this.status = status || 0; }
@@ -134,7 +134,7 @@ export async function hubReq(hub, method, path, body, timeout) {
   try { return JSON.parse(r.body); } catch (e) { throw new HubError(t('err.hub_garbage'), 200); }
 }
 
-// Ключ сторожа: «laputa1:» + base64url(JSON {url, pin, token, name}).
+// Watchman key: 'laputa1:' + base64url(JSON {url, pin, token, name}).
 export function parseKey(text) {
   const m = /laputa1:([A-Za-z0-9_\-=]+)/.exec((text || '').trim());
   if (!m) return null;

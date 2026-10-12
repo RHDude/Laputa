@@ -1,5 +1,5 @@
 #!/bin/bash
-# Сборка Laputa.apk без Gradle: aapt2 + javac + dx + apksigner из репозитория Ubuntu.
+# Builds the APK without Gradle: aapt2 + javac + dx + apksigner from the Ubuntu repositories.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 VERSION=$(grep -o 'android:versionName="[^"]*"' android/AndroidManifest.xml | cut -d'"' -f2)
@@ -17,14 +17,14 @@ $DX --dex --min-sdk-version=26 --output=$OUT/classes.dex $OUT/classes
 cp $OUT/base.apk $OUT/unsigned.apk
 (cd $OUT && zip -q -j unsigned.apk classes.dex)
 zipalign -f 4 $OUT/unsigned.apk $OUT/aligned.apk
-# Ключ подписи никогда не лежит в репозитории. Свой — через LAPUTA_KEYSTORE (папка с laputa.jks и pass.txt).
-# Нет ключа — создаётся новый; приложение, подписанное другим ключом, поверх старого не встанет.
+# The signing key is never in the repository. Point LAPUTA_KEYSTORE at a folder with laputa.jks and pass.txt.
+# Without a key a new one is created; an APK signed with another key will not install over the old one.
 KS=${LAPUTA_KEYSTORE:-keystore}; [ -f $KS/laputa.jks ] || [ -n "${LAPUTA_KEYSTORE:-}" ] || { [ -f ../keystore/laputa.jks ] && KS=../keystore; }
 if [ ! -f $KS/laputa.jks ]; then
   mkdir -p $KS && head -c 24 /dev/urandom | base64 | tr -d '/+=' > $KS/pass.txt && chmod 600 $KS/pass.txt
   keytool -genkeypair -keystore $KS/laputa.jks -alias laputa -keyalg RSA -keysize 3072 -validity 10000 -dname CN=Laputa \
     -storepass "$(cat $KS/pass.txt)" -keypass "$(cat $KS/pass.txt)" >/dev/null 2>&1
-  echo "Создан новый ключ подписи в $KS — сохраните его, без него обновления не встанут."
+  echo "Created a new signing key in $KS. Keep it: updates will not install without it."
 fi
 PASS=$(cat $KS/pass.txt)
 apksigner sign --ks $KS/laputa.jks --ks-key-alias laputa --ks-pass "pass:$PASS" --key-pass "pass:$PASS" --out dist/Laputa-$VERSION.apk $OUT/aligned.apk

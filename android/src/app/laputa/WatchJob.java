@@ -8,8 +8,8 @@ import android.content.ComponentName;
 import android.content.Context;
 
 /**
- * Проверка по расписанию, раз в 15 минут. В режиме «Раз в 15 минут» это единственный источник тревог,
- * в режиме «Сразу» страховка: если систему угораздило убить постоянную службу, тревога всё равно придёт.
+ * Scheduled check every 15 minutes. In 15-minute mode it is the only source of alerts;
+ * in instant mode it is a safety net in case the system kills the persistent service.
  */
 public final class WatchJob extends JobService {
     private static final int JOB_PERIODIC = 1;
@@ -30,7 +30,7 @@ public final class WatchJob extends JobService {
                     .build();
             js.schedule(job);
         } catch (Throwable t) {
-            L.i("расписание проверок: " + t);
+            L.i("check schedule: " + t);
         }
     }
 
@@ -64,7 +64,7 @@ public final class WatchJob extends JobService {
                         }
                     }
                 } catch (Throwable t) {
-                    L.i("проверка по расписанию: " + t);
+                    L.i("scheduled check: " + t);
                 }
                 jobFinished(params, false);
             }

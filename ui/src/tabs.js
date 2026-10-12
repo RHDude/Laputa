@@ -8,7 +8,7 @@ import { THEMES, monetSwatch } from './theme.js';
 import { Needs } from './home.js';
 import { ServiceRow, svcSev, SvcFolds } from './node.js';
 
-// ---------- службы ----------
+// ---------- services ----------
 
 export function ServicesTab({ ctx }) {
   const { snap, now, setSheet } = ctx;
@@ -35,7 +35,7 @@ export function ServicesTab({ ctx }) {
   </div>`;
 }
 
-// ---------- события ----------
+// ---------- events ----------
 
 export function EventsTab({ ctx }) {
   const { snap, now, setRoute, cfg, saveCfg } = ctx;
@@ -81,7 +81,7 @@ export function EventsTab({ ctx }) {
   </div>`;
 }
 
-// Сгруппированные настройки: карточка со строками «название — значение ›», выбор в шторке.
+// Grouped settings: a card of 'name — value ›' rows, choices in a sheet.
 export function Group({ title, foot, children }) {
   return html`<section class="block">
     ${title && html`<div class="block-head"><h2>${title}</h2></div>`}
@@ -103,7 +103,7 @@ export function pick(setSheet, title, options, value, onPick) {
   setSheet({ type: 'choice', title, options, value, onPick });
 }
 
-// Что присылать уведомлением: общая настройка и своя для узла. Хранится в приложении, сторож о ней не знает.
+// What to notify about: general and per node. Stored in the app; the watchman does not know about it.
 export function NotifyRows({ levels, onChange, inherit, base, setSheet }) {
   return EV_KINDS.map((k) => {
     const cur = levels[k] || (inherit ? 'inherit' : 'sound');
@@ -116,7 +116,7 @@ export function NotifyRows({ levels, onChange, inherit, base, setSheet }) {
   });
 }
 
-// ---------- настройки ----------
+// ---------- settings ----------
 
 export function hostOf(url) {
   try { return new URL(url).host; } catch (e) { return url; }
@@ -193,7 +193,7 @@ function Choice({ on, onClick, title, text }) {
   </button>`;
 }
 
-// ---------- первое подключение ----------
+// ---------- first connection ----------
 
 export function Onboarding({ ctx }) {
   const { cfg, saveCfg, say } = ctx;

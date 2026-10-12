@@ -1,4 +1,4 @@
-// Сквозная проверка интерфейса против живого стенда (test/bench/run.py serve).
+// End-to-end UI test against the live bench (test/bench/run.py serve).
 import { chromium } from '/opt/npm-tools/node_modules/playwright/index.mjs';
 import fs from 'node:fs';
 
@@ -59,7 +59,7 @@ try {
   check('после журнала снова карточка службы', await has('Изменить ярлык'));
   await page.locator('.sheet .icon-btn').click();
 
-  // игровая консоль на Meadow
+  // game console on Meadow
   await page.locator('.bar .icon-btn').click();
   await page.locator('.node-row', { hasText: 'Meadow' }).click();
   await page.getByRole('button', { name: 'Добавить' }).click();
@@ -89,7 +89,7 @@ try {
   await shot('live-reboot');
   await page.locator('.sheet .btn', { hasText: 'Отмена' }).click();
 
-  // беда: служба упала
+  // trouble: a service failed
   await page.locator('.bar .icon-btn').click();
   setUnit('aurora', 'milo-bot.service', { state: 'failed', restarts: 4 });
   check('главный экран сообщает о падении службы', await has('Не работает Milo Bot', 20000), await text('.sky h1'));

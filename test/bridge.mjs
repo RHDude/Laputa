@@ -1,5 +1,5 @@
-// Проверка интерфейса через тот же мост, что в приложении: подставной window.LaputaNative
-// отвечает в формате MainActivity (resolve(id, ok, json)), сеть идёт к живому стенду.
+// UI test through the same bridge as the app: a stub window.LaputaNative
+// answers like MainActivity (resolve(id, ok, json)); network goes to the live bench.
 import { chromium } from '/opt/npm-tools/node_modules/playwright/index.mjs';
 import { execSync } from 'node:child_process';
 
@@ -7,7 +7,7 @@ const SHOTS = new URL('./shots/', import.meta.url).pathname;
 const results = [];
 const check = (name, ok, extra) => { results.push([name, !!ok]); console.log((ok ? '  PASS  ' : '  FAIL  ') + name + (!ok && extra ? '   ' + extra : '')); };
 
-// ключ приложения в том виде, в каком его печатает установщик на сервере
+// the app key as printed by the server installer
 const key = execSync(`python3 -I -c "
 import sys, json; sys.path.insert(0, 'server'); import laputa
 h = json.load(open('${process.env.BENCH_DIR}/summit/etc/hub.json'))
@@ -41,7 +41,7 @@ await page.addInitScript((appKey) => {
       const m = JSON.parse(msg);
       calls.push(m.method + (m.method === 'chrome' ? ':' + m.args.top : ''));
       const h = handlers[m.method] || (async () => true);
-      // как в MainActivity: ответ приходит позже и текстом JSON, который исполняется как выражение
+      // like MainActivity: the reply arrives later as JSON text evaluated as an expression
       h(m.args).then((res) => setTimeout(() => (0, eval)('window.__laputa.resolve(' + m.id + ',true,' + JSON.stringify(res) + ')'), 5),
         (e) => setTimeout(() => (0, eval)('window.__laputa.resolve(' + m.id + ',false,' + JSON.stringify(String(e.message || e)) + ')'), 5));
     },

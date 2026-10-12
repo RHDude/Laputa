@@ -1,5 +1,5 @@
-// Темы оформления. Режим (тёмный или светлый) задаёт цвета состояний, тема — поверхности и акцент.
-// Monet: цвета из обоев телефона (Android 12+), палитру присылает оболочка в env.monet.
+// Themes. The mode (dark or light) sets the state colours, the theme sets surfaces and accent.
+// Monet: wallpaper colours (Android 12+); the shell sends the palette in env.monet.
 
 export const THEMES = [
   ['system', null, ['#0d1430', '#6ea8ea', '#9fbeff']],
@@ -48,7 +48,7 @@ export function monetSwatch(m, mode) {
   return [v['--sky-top'], v['--ground'], v['--accent']];
 }
 
-// Какая тема и какой режим на самом деле: «как в системе» и Monet зависят от ночи и от того, есть ли палитра.
+// The actual theme and mode: System and Monet depend on night mode and on whether a palette exists.
 export function resolveTheme(pref, night, monet) {
   let name = pref || 'system';
   if (name.startsWith('monet') && !monet) name = name === 'monet-light' ? 'light' : name === 'monet-dark' ? 'dark' : 'system';
@@ -72,8 +72,8 @@ export function applyTheme(th, monet) {
   return { skyTop: cs.getPropertyValue('--sky-top').trim(), ground: cs.getPropertyValue('--ground').trim() };
 }
 
-// Последняя применённая тема: index.html ставит её до первой отрисовки при следующем запуске.
+// The last applied theme: index.html applies it before the first paint on the next start.
 export function rememberTheme() {
   const el = document.documentElement;
-  try { localStorage.setItem('laputa.theme', JSON.stringify({ t: el.dataset.theme, m: el.dataset.mode, s: el.getAttribute('style') || '' })); } catch (e) { /* без памяти просто стартуем с тёмной */ }
+  try { localStorage.setItem('laputa.theme', JSON.stringify({ t: el.dataset.theme, m: el.dataset.mode, s: el.getAttribute('style') || '' })); } catch (e) { /* no storage: start dark */ }
 }

@@ -76,7 +76,7 @@ def make_handler(hub):
             u = urlsplit(self.path)
             q = {k: v[0] for k, v in parse_qs(u.query).items()}
             path = u.path
-            if path.startswith('/i/') and method == 'GET':  # раздача установщика узлам
+            if path.startswith('/i/') and method == 'GET':  # installer download for nodes
                 parts = path.split('/')
                 if len(parts) == 4 and token_ok(parts[2], cfg['agent_token']) and parts[3] == 'laputa.py':
                     with open(os.path.abspath(__file__), 'rb') as f:
@@ -104,7 +104,7 @@ def make_handler(hub):
                     return self.deny()
                 self.request.settimeout(100)
                 if path == '/v1/cmd':
-                    self.request.settimeout(660)   # действия узла могут идти до 10 минут
+                    self.request.settimeout(660)  # node actions may take up to 10 minutes
                 if path == '/v1/ping':
                     return self.send(200, {'ok': True, 'id': cfg['id'], 'name': cfg['name'], 'version': VERSION, 'ts': int(time.time())})
                 if path == '/v1/state':

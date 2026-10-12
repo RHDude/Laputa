@@ -1,4 +1,4 @@
-# ---------------------------------------------------------------- установка
+# ---------------------------------------------------------------- install
 
 HUB_UNIT = """[Unit]
 Description={desc}
@@ -52,7 +52,7 @@ def python_path():
 
 
 def make_user():
-    """Системный пользователь без входа. useradd есть почти везде, в BusyBox (Alpine) его заменяет adduser."""
+    """System user without login. useradd is almost everywhere; BusyBox (Alpine) has adduser instead."""
     if sh(['id', 'laputa'])[0] == 0:
         return
     nologin = shutil.which('nologin') or next((p for p in ('/usr/sbin/nologin', '/sbin/nologin', '/usr/bin/nologin') if os.path.exists(p)), '/bin/false')
@@ -73,11 +73,11 @@ def own(path):
     try:
         shutil.chown(path, 'laputa', 'laputa')
     except LookupError:
-        shutil.chown(path, 'laputa')  # группы laputa нет: хватит владельца
+        shutil.chown(path, 'laputa')  # no laputa group: the owner is enough
 
 
 def start_unit(unit, text):
-    """Включает и запускает службу. Без systemd объясняет, как запускать самому."""
+    """Enable and start a service. Without systemd, explain how to run it."""
     if INIT != 'systemd':
         return False
     sh(['systemctl', 'daemon-reload'])
@@ -110,7 +110,7 @@ def put_self():
 
 
 def der_item(buf, pos):
-    """Разбор одного элемента DER: возвращает (начало содержимого, конец элемента)."""
+    """Parse one DER element: returns (content start, element end)."""
     ln = buf[pos + 1]
     pos += 2
     if ln & 0x80:
@@ -121,14 +121,14 @@ def der_item(buf, pos):
 
 
 def spki_pin(der):
-    """sha256 от SubjectPublicKeyInfo в base64: формат, который понимает curl --pinnedpubkey."""
+    """base64 sha256 of SubjectPublicKeyInfo, the format curl --pinnedpubkey expects."""
     body, _ = der_item(der, 0)            # Certificate
     pos, _ = der_item(der, body)          # TBSCertificate
     if der[pos] == 0xa0:                  # [0] version
         pos = der_item(der, pos)[1]
     for _ in range(5):                    # serial, signature, issuer, validity, subject
         pos = der_item(der, pos)[1]
-    end = der_item(der, pos)[1]           # subjectPublicKeyInfo целиком
+    end = der_item(der, pos)[1]  # whole subjectPublicKeyInfo
     return base64.b64encode(hashlib.sha256(der[pos:end]).digest()).decode('ascii')
 
 
@@ -183,7 +183,7 @@ def cmd_install_hub(a):
     os.makedirs(VAR, exist_ok=True)
     make_user()
     old = jload(HUB_CFG, {}) or {}
-    ag = jload(AGENT_CFG, {}) or {}   # если агент на сервере уже стоит, сторож берёт его имя
+    ag = jload(AGENT_CFG, {}) or {}  # reuse the agent's name if it is already installed
     host = socket.gethostname()
     name = a.name or old.get('name') or ag.get('name') or host
     port = a.port or old.get('port') or 8743
@@ -250,7 +250,7 @@ def cmd_keys(a):
 
 
 def cmd_rekey(a):
-    """Новый ключ приложения: на случай потери телефона. Узлы перенастраивать не нужно, у них свой ключ."""
+    """New app key, in case the phone is lost. Nodes keep their own key."""
     need_root()
     cfg = jload(HUB_CFG)
     if not cfg:
@@ -354,7 +354,7 @@ def main():
     sub.add_parser('status')
     sub.add_parser('uninstall')
     a = p.parse_args()
-    if getattr(a, 'lang', None):   # язык, выбранный при установке, сохраняется в настройках
+    if getattr(a, 'lang', None):  # the install-time language is saved in the settings
         global SRV_LANG
         SRV_LANG = a.lang
     if a.cmd == 'hub':

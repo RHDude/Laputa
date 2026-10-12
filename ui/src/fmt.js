@@ -1,4 +1,4 @@
-// Всё, что не зависит от языка, и человеческие имена известных служб.
+// Language-independent formatting and friendly names of known services.
 import { t } from './i18n.js';
 
 export function pct(used, total) {
@@ -8,7 +8,7 @@ export function pct(used, total) {
 
 export const round = Math.round;
 
-// Известные службы: имя собственное или описание на языке пользователя.
+// Known services: a proper name or a description in the user's language.
 const KNOWN = [
   [/^awg-quick@(.+)$/, (m) => t('unit.awg') + (m[1] === 'awg0' ? '' : ' ' + m[1])],
   [/^wg-quick@(.+)$/, (m) => t('unit.wg') + (m[1] === 'wg0' ? '' : ' ' + m[1])],
@@ -52,7 +52,7 @@ export function kindName(kind, many) {
   return t('kind.' + (KINDS.includes(kind) ? kind : 'other') + (many ? '.many' : ''));
 }
 
-// Виды событий для фильтра и настроек уведомлений. Тот же список в android/.../Checker.java.
+// Event kinds for the filter and notification settings. Same list in android/.../Checker.java.
 export const EV_KINDS = ['down', 'svc', 'disk', 'backup', 'ssh', 'reboot'];
 const EV_KIND = {
   node_new: 'down', node_down: 'down', group_down: 'down', node_up: 'down', link_lost: 'down', hub_down: 'down', hub_up: 'down',

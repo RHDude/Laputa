@@ -1,5 +1,5 @@
 
-# ---------------------------------------------------------------- сторож
+# ---------------------------------------------------------------- watchman (hub)
 
 CAUSE_RU = {'clean': 'узел выключили штатно', 'oom': 'кончилась память, ядро убивало процессы', 'panic': 'паника ядра',
             'lockup': 'система зависла', 'abrupt': 'обрыв без записей в журнале: похоже на пропажу питания или действия хостера',
@@ -17,27 +17,27 @@ class Hub:
         self.events = st.get('events', [])
         self.seq = st.get('seq', 0)
         self.hist = {k: collections.deque(v, maxlen=1440) for k, v in st.get('hist', {}).items()}
-        self.acc = {}       # накопление за текущую минуту
+        self.acc = {}  # current minute's accumulator
         self.ver = int(time.time()) % 100000 * 1000
-        self.cmds = {}      # node -> очередь команд
+        self.cmds = {}  # node -> command queue
         self.results = {}   # cmd id -> {'ev', 'res'}
-        self.expect = {}    # (node, unit) -> до какого времени остановка ожидаема
-        self.cool = {}      # (node, unit|mount, type) -> когда было событие
-        self.views = {}     # id сторожа-соседа -> {'ts', 'ages'}
-        self.bad = {}       # ip -> [счётчик, начало окна]
+        self.expect = {}  # (node, unit) -> stop expected until
+        self.cool = {}  # (node, unit|mount, type) -> last event time
+        self.views = {}  # neighbour watchman id -> {'ts', 'ages'}
+        self.bad = {}  # ip -> [count, window start]
         self.diag_busy = set()
-        self.pollgen = {}   # node -> номер последнего опроса
-        for n in self.nodes.values():  # после перезапуска сторожа даём узлам время объявиться
+        self.pollgen = {}  # node -> latest poll number
+        for n in self.nodes.values():  # after a restart, give nodes time to report
             if n.get('status') in ('up', 'stale'):
                 n['last_seen'] = self.started
             for k, v in (('disk_alarm', []), ('backup_alarm', []), ('ssh_known', []), ('login_seen', []), ('flags_seen', {})):
                 n.setdefault(k, v)
 
-    # --- события
+    # --- events
 
     def emit(self, typ, sev, node, title, text='', key='node', p=None):
-        # key отличает предметы тревог на одном узле: приложение заменяет тревогу отбоем с тем же ключом.
-        # p — параметры, по которым приложение собирает текст на языке пользователя; title и text — русский запасной вариант.
+        # key identifies the alert subject on a node: the app replaces an alert with the all-clear of the same key.
+        # p holds the params the app builds localized text from; title and text are a Russian fallback.
         self.seq += 1
         e = {'seq': self.seq, 'ts': int(time.time()), 'type': typ, 'sev': sev, 'node': node, 'key': key, 'title': title, 'text': text, 'p': p or {}}
         self.events.append(e)
@@ -62,7 +62,7 @@ class Hub:
     def muted(self, n):
         return n.get('muted_until', 0) > time.time()
 
-    # --- сигнал агента
+    # --- agent signal
 
     def on_beat(self, b, ip=''):
         nid = b.get('node')
@@ -89,12 +89,12 @@ class Hub:
                       'actions': (b.get('actions') or [])[:40], 'backups': (b.get('backups') or [])[:10], 'maint': b.get('maint'),
                       'candidates': (b.get('candidates') or [])[:5], 'pending': b.get('pending')})
             gd = b.get('going_down') or 0
-            if gd and gd != n.get('gd_seen'):  # агент сам сказал, что уходит на перезагрузку
+            if gd and gd != n.get('gd_seen'):  # the agent said it is going down for a reboot
                 n['gd_seen'] = gd
                 n['rebooting'] = int(now)
                 n['muted_until'] = now + REBOOT_MUTE
                 self.emit('reboot', 'info', nid, '%s перезагружается из панели' % name, 'Тревоги по узлу заглушены на 10 минут.', key='reboot', p={'name': name})
-            elif not gd and n.get('rebooting'):   # агент снова на связи и не уходит: перезагрузка закончилась или не удалась
+            elif not gd and n.get('rebooting'):  # agent is back and not going down: the reboot finished or failed
                 n.pop('rebooting', None)
             pm = b.get('pm')
             if isinstance(pm, dict) and pm.get('boot_id') and pm['boot_id'] != n.get('pm_boot'):
@@ -121,7 +121,7 @@ class Hub:
                 self.views[nid] = {'ts': now, 'ages': {k: v for k, v in b['view'].items() if isinstance(v, (int, float))}}
             if b.get('hub') and 'hub_ok' in b:
                 bad = 0 if b['hub_ok'] else n.get('hub_bad', 0) + 1
-                if bad == 3:  # три сигнала подряд, чтобы не шуметь при перезапуске
+                if bad == 3:  # three signals in a row, to stay quiet during restarts
                     self.emit('hub_down', 'warn', nid, 'Сторож %s не отвечает' % name,
                               'Сам узел жив, но сторож на нём не работает. Пока тревоги идут только через сторожа %s.' % self.cfg['name'], key='hub',
                               p={'name': name, 'hub': self.cfg['name']})
@@ -169,11 +169,11 @@ class Hub:
             self.hist.setdefault(nid, collections.deque(maxlen=1440)).append([a[0] * 60, round(a[2] / a[1], 1), round(a[3] / a[1], 1), round(a[4], 1)])
 
     def diff_services(self, n, prev, cur):
-        if n.get('rebooting'):   # узел гасит службы сам, перед перезагрузкой: это не беда
+        if n.get('rebooting'):  # the node stops services itself before a reboot: not an incident
             return
         nid, name = n['id'], n['name']
         now = time.time()
-        loud = not self.muted(n)   # заглушённый узел пишет события без уведомлений
+        loud = not self.muted(n)  # a muted node records events without notifications
         for s in cur:
             p = prev.get(s['unit'])
             if not p:
@@ -289,10 +289,10 @@ class Hub:
             self.emit('reboot_gaveup', 'warn', n['id'], '%s так и не опустел' % n['name'],
                       'Перезагрузку отменил: за %s ч кто-то всё время был на узле.' % g.get('hours'), key='reboot', p={'name': n['name'], 'hours': g.get('hours')})
 
-    # --- кто замолчал
+    # --- who went silent
 
     def peer_sees(self, nid):
-        """True: сосед видит узел. False: соседи есть и не видят. None: спросить некого."""
+        """True: a neighbour sees the node. False: neighbours exist and don't. None: nobody to ask."""
         now = time.time()
         answers = []
         for pid, v in self.views.items():
@@ -300,7 +300,7 @@ class Hub:
             if pid == nid or not peer or peer.get('status') != 'up' or now - v['ts'] > PEER_FRESH:
                 continue
             age = v['ages'].get(nid)
-            # сигналы приходят обоим сторожам почти одновременно: если узел умер, у соседа он тоже давно молчит
+            # signals reach both watchmen almost at once: if the node died, the neighbour has not heard it for a while either
             answers.append(age is not None and age + (now - v['ts']) < STALE_AFTER)
         if not answers:
             return None
@@ -315,7 +315,7 @@ class Hub:
         if mates:
             group = sorted(mates + [n], key=lambda x: x.get('since', 0))
             names = [x['name'] for x in group]
-            lead = min(mates, key=lambda x: x.get('down_ts', 0))   # у него уже есть громкая тревога: общая заменит её
+            lead = min(mates, key=lambda x: x.get('down_ts', 0))  # it already has a loud alert; the group alert replaces it
             self.emit('node_down', 'info', n['id'], '%s молчит' % name, 'Сигнала нет больше минуты.' + tail, p={'name': name, 'both': both, 'group': place})
             self.emit('group_down', 'crit', lead['id'], 'Замолчали %s' % ', '.join(names),
                       'Все с места «%s» почти одновременно. Похоже, там пропал свет или интернет.' % place, key='node', p={'names': names, 'place': place})
@@ -350,7 +350,7 @@ class Hub:
                     else:
                         self.went_down(n, sees is False)
                 elif st == 'down' and n.get('confirmed') is False and not n.get('quiet'):
-                    if self.peer_sees(n['id']) is False:  # второй сторож тоже потерял узел
+                    if self.peer_sees(n['id']) is False:  # the other watchman lost the node too
                         n['confirmed'] = True
                         self.went_down(n, True)
             for k in [k for k, v in self.expect.items() if v < now]:
@@ -380,7 +380,7 @@ class Hub:
             except OSError as e:
                 log(L('не удалось сохранить состояние:', 'could not save state:'), e)
 
-    # --- проверка молчащего узла с соседей
+    # --- checking a silent node from neighbours
 
     def start_diag(self, nid):
         if nid in self.diag_busy:
@@ -416,7 +416,7 @@ class Hub:
         finally:
             self.diag_busy.discard(nid)
 
-    # --- ответы приложению
+    # --- answers to the app
 
     PUBLIC = ('place', 'addr', 'agent', 'm', 'services', 'mc', 'game', 'actions', 'backups', 'maint', 'candidates', 'pending', 'pm', 'diag', 'confirmed')
 
@@ -442,14 +442,14 @@ class Hub:
     def wait_state(self, since, wait):
         end = time.time() + wait
         with self.cv:
-            if since > self.ver:  # сторожа перезапускали, счёт версий начался заново
+            if since > self.ver:  # watchman restarted, versions start over
                 return self.state()
             while self.ver <= since:
                 left = end - time.time()
                 if left <= 0:
                     return {'v': self.ver, 'ts': int(time.time()), 'same': True}
                 self.cv.wait(left)
-        time.sleep(0.25)  # собрать близкие изменения в один ответ
+        time.sleep(0.25)  # batch close changes into one answer
         return self.state()
 
     def summary(self):
@@ -499,7 +499,7 @@ class Hub:
                 if left <= 0:
                     break
                 self.cv.wait(left)
-            if after > self.seq:  # сторожа переустановили, счёт начался заново
+            if after > self.seq:  # watchman reinstalled, the count starts over
                 after = 0
             return {'seq': self.seq, 'events': [e for e in self.events if e['seq'] > after][-30:], 'summary': self.summary(),
                     'problems': self.problems(), 'hub': {'id': self.cfg['id'], 'name': self.cfg['name']}}
@@ -529,10 +529,10 @@ class Hub:
         return {'step': step, 'from': start, 'cpu': [round(s[0] / s[3], 1) if s[3] else None for s in sums],
                 'mem': [round(s[1] / s[3], 1) if s[3] else None for s in sums], 'disk': [round(s[2], 1) if s[3] else None for s in sums]}
 
-    # --- команды
+    # --- commands
 
     def dispatch(self, nid, typ, args, timeout):
-        """Отдать команду агенту и дождаться ответа."""
+        """Send a command to the agent and wait for the reply."""
         with self.cv:
             n = self.nodes.get(nid)
             if not n:
@@ -560,7 +560,7 @@ class Hub:
             unit = args.get('unit') if isinstance(args, dict) else None
             if n and typ in ('svc.stop', 'svc.restart', 'svc.start') and unit:
                 self.expect[(nid, unit)] = time.time() + 180
-                if typ == 'svc.stop':  # остановили сами: «снова работает» потом не нужно
+                if typ == 'svc.stop':  # stopped on purpose: no "running again" later
                     n.get('svc_bad', {}).pop(unit, None)
         slow = typ in ('svc.restart', 'svc.start', 'svc.stop', 'svc.suggest', 'backup.suggest', 'maint.check', 'impact', 'diag.probe')
         res = self.dispatch(nid, typ, args, 70 if slow else 28 if not typ.startswith('action.') else 620)
@@ -569,7 +569,7 @@ class Hub:
     def poll(self, nid, wait):
         end = time.time() + wait
         with self.cv:
-            # новый опрос от узла вытесняет старый: тот мог остаться от убитого процесса агента и унёс бы команду в никуда
+            # a newer poll from the node supersedes the old one, which may belong to a killed agent and would swallow the command
             gen = self.pollgen[nid] = self.pollgen.get(nid, 0) + 1
             while True:
                 if self.pollgen.get(nid) != gen:
@@ -622,7 +622,7 @@ class Hub:
         with self.cv:
             return {'ages': {n['id']: int(now - n['last_seen']) for n in self.nodes.values() if 'last_seen' in n and n.get('status') != 'new'}}
 
-    # --- защита от перебора ключа
+    # --- key brute-force protection
 
     def blocked(self, ip):
         b = self.bad.get(ip)

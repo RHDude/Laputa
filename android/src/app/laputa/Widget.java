@@ -10,7 +10,7 @@ import android.widget.RemoteViews;
 
 import org.json.JSONObject;
 
-/** Виджет на рабочий стол: одна строка о состоянии узлов. Данные берёт из последней проверки, в сеть сам не ходит. */
+/** Home screen widget: one line about the nodes. Uses the last check's data, never goes online itself. */
 public final class Widget extends AppWidgetProvider {
     @Override
     public void onUpdate(Context c, AppWidgetManager m, int[] ids) {
@@ -61,7 +61,7 @@ public final class Widget extends AppWidgetProvider {
             v.setOnClickPendingIntent(R.id.w_root, PendingIntent.getActivity(c, 77, i, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE));
             m.updateAppWidget(ids, v);
         } catch (Throwable t) {
-            L.i("виджет: " + t);
+            L.i("widget: " + t);
         }
     }
 }

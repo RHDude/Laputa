@@ -1,8 +1,8 @@
 #!/bin/bash
-# Проверка установщика и агента в настоящем окружении дистрибутива (chroot в распакованный образ).
-# Настоящего systemd в chroot нет: его заменяет подставной systemctl со стенда, остальное настоящее
-# (useradd или adduser, nologin, /etc/os-release, права на файлы, системный или подложенный Python).
-#   distro_test.sh <имя> <архив образа> <порт> [каталог своего python] [nosystemd]
+# Installer and agent test in a real distro environment (chroot into an unpacked image).
+# There is no real systemd in a chroot: the bench's stub systemctl replaces it, the rest is real
+# (useradd or adduser, nologin, /etc/os-release, file permissions, system or supplied Python).
+#   distro_test.sh <name> <image archive> <port> [python dir] [nosystemd]
 set -u
 NAME=$1; TARBALL=$2; PORT=$3; PYDIR=${4:-}; MODE=${5:-}
 D=${DISTRO_DIR:-/tmp/laputa-distro}
@@ -24,7 +24,7 @@ if [ "$MODE" = nosystemd ]; then INITENV="LAPUTA_SPEED=5"; else INITENV="LAPUTA_
 cp "$SRC/server/laputa.py" "$ROOT/srv/lp/laputa.py"
 cp "$SRC/test/bench/bin/systemctl" "$SRC/test/bench/bin/journalctl" "$ROOT/fake/"
 echo '{"demo-bot.service":{"state":"active","desc":"Demo bot"},"sshd.service":{"state":"active","desc":"OpenSSH"}}' > "$ROOT/tmp/units.json"
-if [ -n "$PYDIR" ]; then   # в образе нет своего Python: подкладываем отдельную сборку
+if [ -n "$PYDIR" ]; then   # the image has no Python: supply a separate build
   mkdir -p "$ROOT/opt/py" && cp -a "$PYDIR/." "$ROOT/opt/py/" && ln -sf /opt/py/bin/python3 "$ROOT/usr/local/bin/python3"
 fi
 PYV=$(inroot python3 -c 'import sys; print(sys.version.split()[0])' 2>&1)
@@ -32,18 +32,18 @@ OSV=$(. "$ROOT/etc/os-release"; echo "$PRETTY_NAME")
 echo "   система: $OSV, python $PYV, свой python: ${PYDIR:+подложен}${PYDIR:-системный}"
 ok $([ -n "$PYV" ] && echo "$PYV" | grep -qE '^3\.' ; echo $?) "python запускается внутри образа" "$PYV"
 
-# 1. без openssl установщик должен объяснить, что поставить
+# 1. without openssl the installer must say what to install
 if ! inroot sh -c 'command -v openssl' >/dev/null 2>&1; then
   OUT=$(inroot python3 /srv/lp/laputa.py install-hub --host 127.0.0.1 --port $PORT --name Test 2>&1)
   ok $(echo "$OUT" | grep -q 'Нужна программа openssl' ; echo $?) "без openssl установщик называет пакет" "$OUT"
-  # сертификат выпускаем снаружи и подкладываем: так поступит и человек, у которого openssl нет
+  # issue the certificate outside and drop it in, as someone without openssl would
   mkdir -p "$ROOT/etc/laputa"
   openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes -days 30 -subj /CN=t -keyout "$ROOT/etc/laputa/tls.key" -out "$ROOT/etc/laputa/tls.crt" >/dev/null 2>&1
 else
   echo "   openssl в образе есть: сертификат выпустит сам установщик"
 fi
 
-# 2. установка сторожа
+# 2. watchman install
 OUT=$(inroot python3 /srv/lp/laputa.py install-hub --host 127.0.0.1 --port $PORT --name "Test-$NAME" --place тест 2>&1); RC=$?
 ok $RC "install-hub завершился без ошибки" "$(echo "$OUT" | tail -3)"
 ok $(inroot id laputa >/dev/null 2>&1; echo $?) "создан пользователь laputa" "$(inroot id laputa 2>&1)"
@@ -60,7 +60,7 @@ else
   ok $([ -n "$PYBIN" ] && [ -x "$ROOT$PYBIN" ]; echo $?) "юнит ссылается на настоящий путь python ($PYBIN)" "$EXEC"
 fi
 
-# 3. сторож от пользователя laputa и агент от root
+# 3. watchman as user laputa, agent as root
 chroot --userspec=laputa "$ROOT" /usr/bin/env -i PATH=/usr/local/bin:/usr/bin:/bin LANG=C.UTF-8 $INITENV python3 /srv/lp/laputa.py hub > "$ROOT/tmp/hub.log" 2>&1 &
 sleep 2
 inroot python3 /srv/lp/laputa.py agent > "$ROOT/tmp/agent.log" 2>&1 &
@@ -69,7 +69,7 @@ ST=$(inroot python3 /srv/lp/laputa.py status 2>&1)
 ok $(echo "$ST" | grep -q "Test-$NAME.*в строю"; echo $?) "сторож (от laputa) видит узел в строю" "$ST | $(tail -2 "$ROOT/tmp/hub.log")"
 ok $(inroot stat -c '%U' /var/lib/laputa >/dev/null 2>&1 && [ "$(inroot stat -c '%U' /var/lib/laputa)" = laputa ]; echo $?) "каталог состояния принадлежит laputa"
 
-# 4. что агент сообщил о системе и службах
+# 4. what the agent reported about the system and services
 cat > "$ROOT/tmp/q.py" <<'EOF'
 import json, sys
 sys.path.insert(0, '/srv/lp')
@@ -101,7 +101,7 @@ fi
 WANT=$(openssl x509 -in "$ROOT/etc/laputa/tls.crt" -pubkey -noout | openssl pkey -pubin -outform der | openssl dgst -sha256 -binary | base64)
 ok $(echo "$Q" | grep -qF "\"spki\": \"$WANT\""; echo $?) "отпечаток для curl совпал с посчитанным openssl"
 
-# 5. удаление
+# 5. uninstall
 inroot python3 /srv/lp/laputa.py uninstall >/dev/null 2>&1
 ok $([ ! -e "$ROOT/etc/laputa" ] && [ ! -e "$ROOT/opt/laputa" ]; echo $?) "uninstall убрал настройки и программу"
 cleanup

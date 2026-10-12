@@ -1,5 +1,5 @@
 
-# ---------------------------------------------------------------- агент
+# ---------------------------------------------------------------- agent
 
 KNOWN_RE = re.compile(r'^(nginx|apache2|httpd|caddy|traefik|haproxy|docker|containerd|postgres|postgresql|mariadb|mysql|redis|mongod|'
                       r'jellyfin|plex|emby|navidrome|x-ui|3x-ui|xray|sing-box|hysteria|tuic|awg-quick@|wg-quick@|openvpn|'
@@ -7,7 +7,7 @@ KNOWN_RE = re.compile(r'^(nginx|apache2|httpd|caddy|traefik|haproxy|docker|conta
 
 
 def unit_props(units, props):
-    """Произвольные свойства юнитов одним вызовом systemctl на пачку."""
+    """Arbitrary unit properties, one systemctl call per batch."""
     res = {}
     units = list(units)
     for i in range(0, len(units), 80):
@@ -57,7 +57,7 @@ class Agent:
             jsave(self.path, self.cfg)
 
     def migrate(self):
-        """Настройки 1.0: блок mc становится игровой консолью, его папка бэкапов уходит в общий список."""
+        """1.0 settings: the mc block becomes the game console, its backup folder joins the common list."""
         mc = self.cfg.pop('mc', None)
         if mc:
             self.cfg['game'] = {'type': 'minecraft', 'host': mc.get('host', '127.0.0.1'), 'port': mc.get('port', 25575),
@@ -68,7 +68,7 @@ class Agent:
                     bl.append({'path': mc['backups'], 'label': 'Minecraft'})
             self.save()
 
-    # --- данные
+    # --- data
 
     def services(self, fresh=False):
         with self.lock:
@@ -139,14 +139,14 @@ class Agent:
             body['boot_check'] = self.boot_check
         local = next((h for h in self.cfg['hubs'] if h.get('local')), None)
         if local and not hub.get('local'):
-            try:  # сторож передаёт соседу, кого он сам видит
+            try:  # the watchman tells its neighbour whom it sees
                 body['view'] = hub_call(local, 'GET', '/a/view', timeout=5).get('ages', {})
                 body['hub_ok'] = True
             except Exception:
-                body['hub_ok'] = False  # узел жив, а его сторож не отвечает: сосед об этом сообщит
+                body['hub_ok'] = False  # node alive but its watchman is not answering: the neighbour reports it
         return body
 
-    # --- после загрузки
+    # --- after boot
 
     def boot_start(self):
         st = jload(AGENT_STATE, {}) or {}
@@ -154,7 +154,7 @@ class Agent:
             log(L('новая загрузка: разбираю прошлую', 'new boot: looking at the previous one'))
             self.pm = postmortem()
             self.pm.update(boot_id=self.boot_id, prev_ts=st.get('ts'))
-            self.state_ready = False   # прежний список работавших служб нужен для сверки, не перезаписываем
+            self.state_ready = False  # keep the previous list of running services for the post-boot check
             t = threading.Timer(BOOT_CHECK, self.do_boot_check, args=(st.get('active', []),))
             t.daemon = True
             t.start()
@@ -183,7 +183,7 @@ class Agent:
                 log(L('состояние агента:', 'agent state:'), e)
             time.sleep(30 / _SPEED)
 
-    # --- потоки
+    # --- threads
 
     def beat_once(self, hub, timeout=12):
         hub_call(hub, 'POST', '/a/beat', self.beat_body(hub), timeout=timeout)
@@ -249,7 +249,7 @@ class Agent:
             if u.get('since') and now - u['since'] < CAND_AGE:
                 continue
             out.append({'unit': u['unit'], 'reasons': u['reasons'], 'ports': u['ports'], 'desc': u.get('desc', '')})
-        with self.lock:   # пока искали, службу могли добавить в панель или отклонить
+        with self.lock:  # the service may have been added or dismissed meanwhile
             skip = {s['unit'] for s in self.cfg.get('services', [])} | set(self.cfg.get('dismissed', []))
             self.candidates = [c for c in out if c['unit'] not in skip][:5]
 
@@ -270,7 +270,7 @@ class Agent:
         while True:
             time.sleep(3600)
 
-    # --- автовыбор служб
+    # --- service discovery
 
     def suggest(self):
         units = discover_units()
@@ -321,7 +321,7 @@ class Agent:
         out.sort(key=lambda x: (-x['score'], x['unit']))
         return out[:150]
 
-    # --- кого заденет
+    # --- who is affected
 
     def impact(self, unit=None):
         svcs = [s for s in self.services(fresh=True) if unit is None or s['unit'] == unit]
@@ -345,7 +345,7 @@ class Agent:
         total = len(players or []) + sum(c['n'] for c in conns) + sum(t['n'] for t in tunnels)
         return {'players': players, 'conns': conns, 'tunnels': tunnels, 'total': total}
 
-    # --- перезагрузка
+    # --- reboot
 
     def say(self, text):
         g = self.cfg.get('game')
@@ -365,7 +365,7 @@ class Agent:
 
     def do_reboot(self):
         self.going_down = int(time.time())
-        for hub in self.cfg['hubs']:   # последний сигнал: сторожа заглушат тревоги по узлу и запишут перезагрузку
+        for hub in self.cfg['hubs']:  # last signal: watchmen mute the node's alerts and record the reboot
             try:
                 self.beat_once(hub, timeout=5)
             except Exception:
@@ -413,7 +413,7 @@ class Agent:
                 self.pending = None
                 self.kick.set()
 
-    # --- команды панели
+    # --- panel commands
 
     def _svc(self, unit):
         unit = str(unit or '')
@@ -467,7 +467,7 @@ class Agent:
             return {'ok': False, 'error': 'Сбой агента: %s' % e, 'code': 'agent_crash', 'p': {'err': str(e)[:200]}}
 
     def dispatch(self, t, a):
-        # --- службы
+        # --- services
         if t in ('svc.restart', 'svc.start', 'svc.stop'):
             s = self._svc(a.get('unit'))
             verb = t.split('.')[1]
@@ -534,7 +534,7 @@ class Agent:
             return {'ok': True}
         if t == 'impact':
             return {'ok': True, 'impact': self.impact(a.get('unit') or None)}
-        # --- узел
+        # --- node
         if t == 'node.reboot':
             if self.pending:
                 raise Err('reboot_pending', 'Перезагрузка уже ждёт своего часа')
@@ -564,13 +564,13 @@ class Agent:
             return {'ok': True, 'maint': self.maint}
         if t == 'diag.probe':
             return {'ok': True, 'probe': probe(a.get('ip'), a.get('port'))}
-        # --- игровая консоль (mc.* — имена из версии 1.0)
+        # --- game console (mc.* are 1.0 names)
         if t in ('game.setup', 'mc.setup'):
             old = self.cfg.get('game') or {}
             typ = a.get('type') if a.get('type') in GAME_TYPES else old.get('type', 'minecraft')
             cfg = {'type': typ, 'host': str(a.get('host') or '127.0.0.1').strip()[:100], 'port': int(a.get('port') or 25575),
                    'password': str(a.get('password') or '') or old.get('password', ''), 'quick': old.get('quick', [])}
-            rcon_run(cfg, [])  # проверка входа
+            rcon_run(cfg, [])
             with self.lock:
                 self.cfg['game'] = cfg
                 if t == 'mc.setup' and a.get('backups'):
@@ -613,7 +613,7 @@ class Agent:
                     q.append({'label': label or cmd[:30], 'command': cmd})
                 self.save()
             return {'ok': True}
-        # --- бэкапы
+        # --- backups
         if t == 'backup.add':
             self._backup_add(a)
             return {'ok': True}
@@ -628,7 +628,7 @@ class Agent:
             with self.lock:
                 known = {b['path'] for b in self.cfg.get('backups', [])}
             return {'ok': True, **backup_suggest(known)}
-        # --- действия узла
+        # --- node actions
         if t == 'action.run':
             act = next((x for x in load_actions() if x['id'] == a.get('id')), None)
             if not act:

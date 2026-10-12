@@ -14,12 +14,12 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function App() {
   const [cfg, setCfg] = useState(null); // {hubs:[{url,pin,token,name}], settings:{mode,theme,seenSeq}}
-  const [env, setEnv] = useState({ night: true, init: true }); // init: настоящие данные от системы ещё не пришли
+  const [env, setEnv] = useState({ night: true, init: true }); // init: real data from the system has not arrived yet
   const [snap, setSnap] = useState(null);
   const [link, setLink] = useState({ state: 'connecting', hub: 0, at: 0 });
   const [route, setRoute] = useState({ tab: 'nodes', node: null });
   const [sheet, setSheet] = useState(null);
-  // Пока открыта шторка, страница под ней стоит на месте: свайп по шторке не листает то, что за ней.
+  // While a sheet is open, the page under it stays put: swiping the sheet does not scroll it.
   const sheetOpen = !!sheet;
   useEffect(() => {
     if (!sheetOpen) return;
@@ -35,7 +35,7 @@ function App() {
   const stateRef = useRef({});
   stateRef.current = { route, sheet };
 
-  // ---- запуск ----
+  // ---- startup ----
   useEffect(() => {
     Promise.all([native('store.get'), native('env')]).then(([c, e]) => {
       setCfg({ hubs: (c && c.hubs) || [], settings: (c && c.settings) || {} });
@@ -63,10 +63,10 @@ function App() {
     return () => { clearInterval(t); off(); document.removeEventListener('visibilitychange', vis); };
   }, []);
 
-  // ---- язык: выбранный в настройках или системный ----
+  // ---- language: chosen in settings or the system's ----
   if (cfg) setLang(pickLang(cfg.settings.lang, env.lang));
 
-  // ---- тема и цвета системных полос ----
+  // ---- theme and system bar colours ----
   const th = resolveTheme(cfg && cfg.settings.theme, env.night !== false, env.monet);
   const night = th.mode === 'dark';
   const onSky = cfg && (!cfg.hubs.length || (route.tab === 'nodes' && !route.node));
@@ -74,7 +74,7 @@ function App() {
   const monetKey = env.monet ? JSON.stringify(env.monet.accent1 || {}) : '';
   const themeReady = !!cfg && !env.init;
   useEffect(() => {
-    // Пока не знаем настроек и системной темы, держим то, что index.html поднял из прошлого запуска, — без мигания.
+    // Until settings and system theme are known, keep what index.html restored from the last run: no flash.
     if (!themeReady) return;
     const c = applyTheme(th, env.monet);
     const skyTop = night ? ({ crit: '#120f2a', lost: '#171b29' }[sev] || c.skyTop) : ({ crit: '#8d8fc0', lost: '#9aa5b8' }[sev] || c.skyTop);
@@ -82,7 +82,7 @@ function App() {
     rememberTheme();
   }, [themeReady, th.name, monetKey, onSky, sev]);
 
-  // ---- опрос сторожей ----
+  // ---- polling the watchmen ----
   const hubsKey = cfg ? cfg.hubs.map((h) => h.url + h.token).join('|') : '';
   useEffect(() => {
     if (!cfg || !cfg.hubs.length) { setSnap(null); return undefined; }
@@ -133,7 +133,7 @@ function App() {
 
   const activeHub = cfg && cfg.hubs[Math.min(live.current.hub, cfg.hubs.length - 1)];
 
-  // Команда узлу через сторожа. cmdRaw отдаёт ответ узла как есть, cmd бросает ошибку с текстом на языке пользователя.
+  // Command to a node via the watchman. cmdRaw returns the node's reply as is; cmd throws a localized error.
   const cmdRaw = useCallback(async (node, type, args, timeout) => {
     const hubs = cfg.hubs;
     let lastErr = null;
@@ -141,7 +141,7 @@ function App() {
       const h = hubs[(live.current.hub + i) % hubs.length];
       try {
         const r = await hubReq(h, 'POST', '/v1/cmd', { node, type, args: args || {} }, timeout || 30000);
-        // сторож не знает узел — возможно, знает второй
+        // this watchman does not know the node; the other one might
         if (!r.ok && r.code === 'hub_no_node' && i < hubs.length - 1) { lastErr = new Error(errText(r)); continue; }
         return r;
       } catch (e) {

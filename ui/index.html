@@ -1,11 +1,11 @@
 <!doctype html>
-<html lang="ru" data-theme="dark" data-mode="dark">
+<html lang="en" data-theme="dark" data-mode="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <title>Laputa</title>
 <script>
-// Тема прошлого запуска — сразу, до загрузки настроек, чтобы не мелькала тёмная.
+// Last run's theme, applied before settings load so the dark theme does not flash.
 try { var th = JSON.parse(localStorage.getItem('laputa.theme') || 'null'); if (th && th.t) { var r = document.documentElement; r.dataset.theme = th.t; r.dataset.mode = th.m || 'dark'; if (th.s) r.setAttribute('style', th.s); } } catch (e) {}
 </script>
 <link rel="stylesheet" href="styles.css">
@@ -13,21 +13,23 @@ try { var th = JSON.parse(localStorage.getItem('laputa.theme') || 'null'); if (t
 <body>
 <div id="root"></div>
 <script>
-// Страховка: если интерфейс не запустился, показываем причину и пишем её в журнал приложения.
+// Safety net: if the UI fails to start, show why and write it to the app log.
 (function () {
   var errs = [];
   function note(m) {
     errs.push(String(m));
-    try { if (window.LaputaNative) window.LaputaNative.post(JSON.stringify({ id: 0, method: 'log.put', args: { text: 'интерфейс: ' + m } })); } catch (e) {}
+    try { if (window.LaputaNative) window.LaputaNative.post(JSON.stringify({ id: 0, method: 'log.put', args: { text: 'ui: ' + m } })); } catch (e) {}
   }
-  window.addEventListener('error', function (e) { note((e.message || 'ошибка') + ' (' + String(e.filename || '').split('/').pop() + ':' + (e.lineno || 0) + ')'); });
+  window.addEventListener('error', function (e) { note((e.message || 'error') + ' (' + String(e.filename || '').split('/').pop() + ':' + (e.lineno || 0) + ')'); });
   window.addEventListener('unhandledrejection', function (e) { note('promise: ' + ((e.reason && e.reason.message) || e.reason)); });
   setTimeout(function () {
     var r = document.getElementById('root');
     if (r && !r.firstChild) {
       var p = document.createElement('pre');
       p.style.cssText = 'white-space:pre-wrap;padding:24px;color:#eef1f8;font:14px/1.5 sans-serif';
-      p.textContent = 'Интерфейс Laputa не запустился.\n\n' + (errs.join('\n') || 'Ошибок не записано. Возможно, на телефоне отключён или устарел Android System WebView.');
+      var ru = /^(ru|be|kk)/i.test(navigator.language || '');
+      p.textContent = (ru ? 'Интерфейс Laputa не запустился.' : 'The Laputa interface did not start.') + '\n\n' + (errs.join('\n') ||
+        (ru ? 'Ошибок не записано. Возможно, на телефоне отключён или устарел Android System WebView.' : 'No errors recorded. Android System WebView may be disabled or outdated on this phone.'));
       r.appendChild(p);
     }
   }, 4000);
